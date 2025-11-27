@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: caliparis-bot
+    env: node
+    buildCommand: npm install
+    startCommand: npm run start
+    envVars:
+      - key: BOT_TOKEN
+        value: 8411037700:AAF9gGmnox1_ldecRmdsKNwVCdt105maxQg
+      - key: ADMIN_CHAT_ID
+        value: 7965350707
+      - key: ADMIN_IDS
+        value: 7965350707
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: postgresql://caliparis_db_user:vL79KhYGMUooguL41n6O2I8K7EZAbXBt@dpg-d4k7dbili9vc73dj2gd0-a.oregon-postgres.render.com/caliparis_db
