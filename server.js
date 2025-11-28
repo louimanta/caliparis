@@ -13,7 +13,6 @@ app.use(express.urlencoded({ extended: true }));
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    // Test simple sans base de données
     res.status(200).json({ 
       status: 'OK',
       bot: 'running',
@@ -26,14 +25,6 @@ app.get('/health', async (req, res) => {
       error: error.message 
     });
   }
-});
-
-// Stats endpoint simplifié
-app.get('/stats', (req, res) => {
-  res.json({
-    status: 'Bot en fonctionnement',
-    timestamp: new Date().toISOString()
-  });
 });
 
 // Webhook pour production
@@ -60,7 +51,7 @@ async function startApplication() {
   try {
     console.log('🚀 Démarrage de l\'application...');
     
-    // Synchroniser la base de données (optionnel)
+    // Synchroniser la base de données
     try {
       console.log('🔄 Tentative de connexion à la base de données...');
       await syncDatabase();
