@@ -1,8 +1,18 @@
 const { Cart, Product } = require('../models');
 
+// Fonction sécurisée pour accéder à la base de données
+async function safeDbOperation(operation, fallbackValue = null) {
+  try {
+    return await operation();
+  } catch (error) {
+    console.error('❌ Erreur base de données:', error.message);
+    return fallbackValue;
+  }
+}
+
 async function handleAddToCart(ctx, productId, quantity) {
   try {
-    const product = await Product.findByPk(productId);
+    const product = await safeDbOperation(() => Product.findByPk(productId));
     if (!product) {
       return ctx.answerCbQuery('❌ Produit non trouvé');
     }
@@ -11,22 +21,20 @@ async function handleAddToCart(ctx, productId, quantity) {
       return ctx.answerCbQuery('❌ Stock insuffisant');
     }
 
-    let cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    let cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     
     if (!cart) {
-      cart = await Cart.create({
+      cart = await safeDbOperation(() => Cart.create({
         telegramId: ctx.from.id,
-        items: [],
-        totalAmount: 0
-      });
+        items: []
+      }));
+      
+      if (!cart) {
+        return ctx.answerCbQuery('❌ Erreur création panier');
+      }
     }
 
-    // Vérifier si cart.items existe, sinon initialiser
-    if (!cart.items) {
-      cart.items = [];
-    }
-
-    const existingItemIndex = cart.items.findIndex(item => item.productId == productId);
+    const existingItemIndex = cart.items.findIndex(item => item.productId === productId);
     
     if (existingItemIndex > -1) {
       cart.items[existingItemIndex].quantity += quantity;
@@ -44,7 +52,7 @@ async function handleAddToCart(ctx, productId, quantity) {
     cart.totalAmount = cart.items.reduce((sum, item) => sum + item.totalPrice, 0);
     cart.lastActivity = new Date();
     
-    await cart.save();
+    await safeDbOperation(() => cart.save());
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
     await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier!`);
@@ -69,9 +77,6 @@ async function handleCustomQuantity(ctx, productId) {
     );
 
     // Stocker l'attente dans la session
-    if (!ctx.session) {
-      ctx.session = {};
-    }
     ctx.session.waitingForCustomQuantity = {
       productId: productId,
       timestamp: Date.now()
@@ -85,8 +90,7 @@ async function handleCustomQuantity(ctx, productId) {
 
 async function handleCustomQuantityResponse(ctx) {
   try {
-    if (!ctx.session || !ctx.session.waitingForCustomQuantity) {
-      await ctx.reply('❌ Session expirée, veuillez recommencer');
+    if (!ctx.session.waitingForCustomQuantity) {
       return;
     }
 
@@ -95,18 +99,6 @@ async function handleCustomQuantityResponse(ctx) {
 
     if (isNaN(quantity) || quantity <= 0) {
       await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
-      return;
-    }
-
-    // Vérifier le stock
-    const product = await Product.findByPk(productId);
-    if (!product) {
-      await ctx.reply('❌ Produit non trouvé');
-      return;
-    }
-
-    if (product.stock < quantity) {
-      await ctx.reply(`❌ Stock insuffisant. Stock disponible: ${product.stock}g`);
       return;
     }
 
@@ -124,9 +116,9 @@ async function handleCustomQuantityResponse(ctx) {
 
 async function showCart(ctx) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     
-    if (!cart || !cart.items || cart.items.length === 0) {
+    if (!cart || cart.items.length === 0) {
       return ctx.reply(
         '🛒 Votre panier est vide\n\n' +
         '📦 Parcourez notre catalogue pour ajouter des produits!',
@@ -144,7 +136,7 @@ async function showCart(ctx) {
     let totalAmount = 0;
 
     for (const item of cart.items) {
-      const product = await Product.findByPk(item.productId);
+      const product = await safeDbOperation(() => Product.findByPk(item.productId));
       if (product) {
         message += `🌿 ${product.name}\n`;
         message += `   📦 Quantité: ${item.quantity}g\n`;
@@ -161,14 +153,10 @@ async function showCart(ctx) {
 
     if (totalQuantity >= 30) {
       discountMessage = '\n\n💎 *Remise Gros Quantité Activée!*';
-      const discount = totalQuantity >= 100 ? 20 : totalQuantity >= 50 ? 15 : 10;
+      const discount = totalQuantity >= 50 ? 15 : totalQuantity >= 30 ? 10 : 0;
       message += discountMessage;
       message += `\n📦 Quantité totale: ${totalQuantity}g`;
       message += `\n🎁 Remise: ${discount}% appliquée`;
-      
-      // Calculer le prix après remise
-      const discountedAmount = totalAmount * (1 - discount/100);
-      message += `\n💵 *Total après remise: ${discountedAmount.toFixed(2)}€*`;
     } else if (totalQuantity >= 20) {
       discountMessage = '\n\n💡 *Ajoutez 10g de plus pour une remise de 10%!*';
       message += discountMessage;
@@ -192,17 +180,17 @@ async function showCart(ctx) {
     
   } catch (error) {
     console.error('Erreur affichage panier:', error);
-    await ctx.reply('❌ Erreur lors du chargement du panier');
+    await ctx.reply('❌ Erreur lors du chargement du panier. Veuillez réessayer.');
   }
 }
 
 async function clearCart(ctx) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     if (cart) {
       cart.items = [];
       cart.totalAmount = 0;
-      await cart.save();
+      await safeDbOperation(() => cart.save());
     }
     await ctx.reply('✅ Panier vidé avec succès');
   } catch (error) {
@@ -216,5 +204,6 @@ module.exports = {
   handleCustomQuantity, 
   handleCustomQuantityResponse,
   showCart, 
-  clearCart 
+  clearCart,
+  safeDbOperation
 };
