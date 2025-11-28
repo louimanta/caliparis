@@ -1,4 +1,5 @@
 
+
 require('dotenv').config();
 const { Telegraf, session, Scenes: { Stage } } = require('telegraf');
 const { sequelize } = require('./models');
@@ -6,7 +7,7 @@ const { sequelize } = require('./models');
 // Import des handlers
 const { handleStart } = require('./handlers/startHandler');
 const { showProducts, showProductVideo, showProductDetails } = require('./handlers/productHandler');
-const { handleAddToCart, handleCustomQuantity, showCart, clearCart } = require('./handlers/cartHandler');
+const { handleAddToCart, handleCustomQuantity, showCart, clearCart, handleQuantityMessage } = require('./handlers/cartHandler');
 const { handleCheckout, handlePaymentMethod, handleDiscountRequest, confirmDiscountRequest } = require('./handlers/orderHandler');
 const { handleAdminCommands, showAdminStats, showPendingOrders, handleOrderAction } = require('./handlers/adminHandler');
 
@@ -314,6 +315,24 @@ bot.action(/admin_cancel_(\d+)/, isAdmin, async (ctx) => {
   }
 });
 
+// ✅ AJOUT IMPORTANT: Gestion des messages de quantité personnalisée
+bot.on('text', async (ctx) => {
+  // Vérifier si c'est un message de quantité personnalisée
+  const handled = await handleQuantityMessage(ctx);
+  if (!handled) {
+    // Le message n'est pas une quantité, afficher le menu principal
+    await ctx.reply(
+      '🤖 *Bot CaliParis*\n\n' +
+      'Utilisez les boutons du menu pour naviguer:\n' +
+      '• 📦 Voir le catalogue\n' +
+      '• 🛒 Mon panier\n' +
+      '• ℹ️ Informations\n' +
+      '• 📞 Contact',
+      { parse_mode: 'Markdown' }
+    );
+  }
+});
+
 // Gestion des erreurs globale AMÉLIORÉE
 bot.catch(async (err, ctx) => {
   console.error('❌ Erreur bot:', err);
@@ -322,20 +341,6 @@ bot.catch(async (err, ctx) => {
   } catch (replyError) {
     console.error('Impossible d\'envoyer le message d\'erreur:', replyError);
   }
-});
-
-// Gestion des messages non reconnus
-bot.on('message', async (ctx) => {
-  await ctx.reply(
-    '🤖 *Bot CaliParis*\n\n' +
-    'Utilisez les boutons du menu ou les commandes suivantes:\n' +
-    '• /start - Redémarrer le bot\n' +
-    '• 📦 Voir le catalogue\n' +
-    '• 🛒 Mon panier\n' +
-    '• ℹ️ Informations\n' +
-    '• 📞 Contact',
-    { parse_mode: 'Markdown' }
-  );
 });
 
 // Nettoyage des paniers anciens avec GESTION D'ERREURS
