@@ -1,6 +1,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
+const path = require('path');
 
-// Configuration de la base de données avec gestion d'erreur améliorée
+// Configuration robuste de la base de données
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -10,38 +11,60 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
       rejectUnauthorized: false
     } : false
   },
-  retry: {
-    max: 5, // Maximum retry 5 times
-    timeout: 60000, // Retry on timeout
-    match: [
-      /ConnectionError/,
-      /SequelizeConnectionError/,
-      /ECONNRESET/,
-      /ETIMEDOUT/,
-      /Connection terminated unexpectedly/
-    ],
-    backoffBase: 1000,
-    backoffExponent: 1.5,
-  },
   pool: {
     max: 5,
     min: 0,
-    acquire: 60000,
+    acquire: 30000,
     idle: 10000,
-    evict: 1000,
-    handleDisconnects: true
+    evict: 10000
+  },
+  retry: {
+    max: 3,
+    match: [
+      /ConnectionError/,
+      /Connection terminated/,
+      /ECONNRESET/,
+      /SequelizeConnectionError/
+    ]
   }
 });
 
-// Test de connexion
-async function testConnection() {
+// Fonction de reconnexion automatique
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+async function setupConnectionHandlers() {
+  sequelize.connectionManager.initPools();
+
+  sequelize.connectionManager.on('disconnect', () => {
+    console.log('🔄 Déconnexion de la base de données détectée');
+  });
+
+  sequelize.connectionManager.on('reconnect', () => {
+    console.log('✅ Reconnexion à la base de données réussie');
+    reconnectAttempts = 0;
+  });
+}
+
+// Test de connexion avec retry
+async function testConnectionWithRetry() {
   try {
     await sequelize.authenticate();
-    console.log('✅ Connexion à la base de données PostgreSQL établie');
+    console.log('✅ Connexion à la base de données établie');
+    reconnectAttempts = 0;
     return true;
   } catch (error) {
-    console.error('❌ Erreur de connexion à la base de données:', error.message);
-    return false;
+    reconnectAttempts++;
+    console.error(`❌ Tentative de connexion ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} échouée:`, error.message);
+    
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      console.log(`🔄 Nouvelle tentative dans 5 secondes...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      return testConnectionWithRetry();
+    } else {
+      console.error('❌ Échec de toutes les tentatives de connexion');
+      return false;
+    }
   }
 }
 
@@ -128,7 +151,7 @@ const Order = sequelize.define('Order', {
     autoIncrement: true
   },
   status: {
-    type: DataTypes.ENUM('pending', 'confirmed', 'cancelled'),
+    type: DataTypes.ENUM('pending', 'processing', 'completed', 'cancelled'),
     defaultValue: 'pending'
   },
   totalAmount: {
@@ -225,25 +248,30 @@ OrderItem.belongsTo(Order, { foreignKey: 'orderId' });
 Product.hasMany(OrderItem, { foreignKey: 'productId' });
 OrderItem.belongsTo(Product, { foreignKey: 'productId' });
 
-// Synchronisation avec gestion d'erreur
+// Synchronisation robuste de la base de données
 async function syncDatabase() {
   try {
-    const isConnected = await testConnection();
+    const isConnected = await testConnectionWithRetry();
+    
     if (!isConnected) {
-      throw new Error('Impossible de se connecter à la base de données');
+      console.log('⚠️  Mode dégradé: fonctionnement sans base de données');
+      return false;
     }
+    
+    await setupConnectionHandlers();
     
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ force: false });
-      console.log('✅ Modèles synchronisés avec la base de données');
+      console.log('✅ Modèles synchronisés');
     } else {
-      await sequelize.sync({ force: false });
+      // En production, on utilise sync sans force
+      await sequelize.sync();
       console.log('✅ Modèles synchronisés en production');
     }
     
     return true;
   } catch (error) {
-    console.error('❌ Erreur de synchronisation de la base de données:', error.message);
+    console.error('❌ Erreur de synchronisation de la base de données:', error);
     return false;
   }
 }
@@ -256,6 +284,6 @@ module.exports = {
   Order,
   OrderItem,
   Cart,
-  testConnection,
-  syncDatabase
+  syncDatabase,
+  testConnectionWithRetry
 };
