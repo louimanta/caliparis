@@ -19,6 +19,12 @@ const notificationService = require('./services/notificationService');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// Vérification du token bot
+if (!process.env.BOT_TOKEN) {
+  console.error('❌ BOT_TOKEN manquant dans les variables d\'environnement');
+  process.exit(1);
+}
+
 // Middlewares globaux
 bot.use(session());
 bot.use(logUserAction);
@@ -28,17 +34,29 @@ bot.use(updateCartTimestamp);
 // Commandes de base
 bot.start(handleStart);
 
-// Handlers de messages
-bot.hears('📦 Voir le catalogue', showProducts);
-bot.hears('🛒 Mon panier', showCart);
-bot.hears('🎬 Vidéo présentation', (ctx) => {
-  ctx.replyWithVideo('https://i.imgur.com/presentation-video.mp4', {
-    caption: '🌟 *CaliParis - La qualité supérieure* 🌟\n\nDécouvrez pourquoi nos clients nous font confiance!',
-    parse_mode: 'Markdown'
-  });
+// Handlers de messages - AJOUT DE ASYNC/AWAIT
+bot.hears('📦 Voir le catalogue', async (ctx) => {
+  await showProducts(ctx);
 });
-bot.hears('📞 Contact', (ctx) => {
-  ctx.reply(
+
+bot.hears('🛒 Mon panier', async (ctx) => {
+  await showCart(ctx);
+});
+
+bot.hears('🎬 Vidéo présentation', async (ctx) => {
+  try {
+    await ctx.replyWithVideo('https://i.imgur.com/presentation-video.mp4', {
+      caption: '🌟 *CaliParis - La qualité supérieure* 🌟\n\nDécouvrez pourquoi nos clients nous font confiance!',
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    console.error('Erreur envoi vidéo:', error);
+    await ctx.reply('❌ Impossible de charger la vidéo de présentation.');
+  }
+});
+
+bot.hears('📞 Contact', async (ctx) => {
+  await ctx.reply(
     '📞 *Contact CaliParis*\n\n' +
     'Pour toute question ou assistance:\n' +
     '• Via ce bot\n' +
@@ -47,8 +65,9 @@ bot.hears('📞 Contact', (ctx) => {
     { parse_mode: 'Markdown' }
   );
 });
-bot.hears('ℹ️ Informations', (ctx) => {
-  ctx.reply(
+
+bot.hears('ℹ️ Informations', async (ctx) => {
+  await ctx.reply(
     'ℹ️ *Informations CaliParis*\n\n' +
     '🌟 *Qualité Premium*\n' +
     '📦 Livraison 24h-48h\n' +
@@ -58,8 +77,9 @@ bot.hears('ℹ️ Informations', (ctx) => {
     { parse_mode: 'Markdown' }
   );
 });
-bot.hears('💎 Commandes en gros', (ctx) => {
-  ctx.reply(
+
+bot.hears('💎 Commandes en gros', async (ctx) => {
+  await ctx.reply(
     '💎 *Commandes en Gros*\n\n' +
     'Pour les commandes de 30g et plus:\n' +
     '• Remises spéciales\n' +
@@ -75,77 +95,225 @@ bot.hears('/admin', isAdmin, handleAdminCommands);
 bot.hears('/stats', isAdmin, showAdminStats);
 bot.hears('/orders', isAdmin, showPendingOrders);
 
-// Callbacks pour produits
+// Callbacks pour produits - GESTION DES ERREURS AMÉLIORÉE
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
-  const quantity = parseInt(ctx.match[1]);
-  const productId = parseInt(ctx.match[2]);
-  await handleAddToCart(ctx, productId, quantity);
+  try {
+    const quantity = parseInt(ctx.match[1]);
+    const productId = parseInt(ctx.match[2]);
+    await handleAddToCart(ctx, productId, quantity);
+  } catch (error) {
+    console.error('Erreur ajout panier:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de l\'ajout au panier');
+  }
 });
 
 bot.action(/custom_(\d+)/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await handleCustomQuantity(ctx, productId);
+  try {
+    const productId = parseInt(ctx.match[1]);
+    await handleCustomQuantity(ctx, productId);
+  } catch (error) {
+    console.error('Erreur quantité personnalisée:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la saisie de quantité');
+  }
 });
 
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
-  await ctx.deleteMessage();
-  await ctx.answerCbQuery('❌ Quantité personnalisée annulée');
+  try {
+    await ctx.deleteMessage();
+    await ctx.answerCbQuery('❌ Quantité personnalisée annulée');
+  } catch (error) {
+    console.error('Erreur annulation quantité:', error);
+  }
 });
 
 bot.action(/video_(\d+)/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await showProductVideo(ctx, productId);
+  try {
+    const productId = parseInt(ctx.match[1]);
+    await showProductVideo(ctx, productId);
+  } catch (error) {
+    console.error('Erreur affichage vidéo:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du chargement de la vidéo');
+  }
 });
 
 bot.action(/details_(\d+)/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await showProductDetails(ctx, productId);
+  try {
+    const productId = parseInt(ctx.match[1]);
+    await showProductDetails(ctx, productId);
+  } catch (error) {
+    console.error('Erreur affichage détails:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du chargement des détails');
+  }
 });
 
-// Callbacks pour panier
-bot.action('view_cart', showCart);
-bot.action('back_to_products', async (ctx) => {
-  await ctx.deleteMessage();
-  await showProducts(ctx);
-});
-bot.action('back_to_cart', async (ctx) => {
-  await ctx.deleteMessage();
+// Callbacks pour panier - CORRECTION DES CALLBACKS
+bot.action('view_cart', async (ctx) => {
   await showCart(ctx);
 });
+
+bot.action('back_to_products', async (ctx) => {
+  try {
+    await ctx.deleteMessage();
+    await showProducts(ctx);
+  } catch (error) {
+    console.error('Erreur retour produits:', error);
+    await ctx.reply('❌ Impossible de charger les produits');
+  }
+});
+
+bot.action('back_to_cart', async (ctx) => {
+  try {
+    await ctx.deleteMessage();
+    await showCart(ctx);
+  } catch (error) {
+    console.error('Erreur retour panier:', error);
+    await ctx.reply('❌ Impossible de charger le panier');
+  }
+});
+
 bot.action('clear_cart', async (ctx) => {
-  await clearCart(ctx);
-  await ctx.answerCbQuery('✅ Panier vidé');
+  try {
+    await clearCart(ctx);
+    await ctx.answerCbQuery('✅ Panier vidé');
+  } catch (error) {
+    console.error('Erreur vidage panier:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du vidage du panier');
+  }
 });
 
-// Callbacks pour commande
-bot.action('checkout', checkCartNotEmpty, handleCheckout);
-bot.action('pay_crypto', checkCartNotEmpty, (ctx) => handlePaymentMethod(ctx, 'crypto'));
-bot.action('pay_cash', checkCartNotEmpty, (ctx) => handlePaymentMethod(ctx, 'cash'));
-bot.action('ask_discount', checkCartNotEmpty, handleDiscountRequest);
-bot.action('confirm_discount_request', checkCartNotEmpty, confirmDiscountRequest);
+// Callbacks pour commande - VALIDATION AMÉLIORÉE
+bot.action('checkout', checkCartNotEmpty, async (ctx) => {
+  try {
+    await handleCheckout(ctx);
+  } catch (error) {
+    console.error('Erreur checkout:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du checkout');
+  }
+});
 
-// Callbacks admin
-bot.action('admin_stats', isAdmin, showAdminStats);
-bot.action('admin_pending_orders', isAdmin, showPendingOrders);
-bot.action(/admin_process_(\d+)/, isAdmin, (ctx) => handleOrderAction(ctx, parseInt(ctx.match[1]), 'process'));
-bot.action(/admin_contact_(\d+)/, isAdmin, (ctx) => handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact'));
-bot.action(/admin_cancel_(\d+)/, isAdmin, (ctx) => handleOrderAction(ctx, parseInt(ctx.match[1]), 'cancel'));
+bot.action('pay_crypto', checkCartNotEmpty, async (ctx) => {
+  try {
+    await handlePaymentMethod(ctx, 'crypto');
+  } catch (error) {
+    console.error('Erreur paiement crypto:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du paiement crypto');
+  }
+});
 
-// Gestion des erreurs
-bot.catch((err, ctx) => {
+bot.action('pay_cash', checkCartNotEmpty, async (ctx) => {
+  try {
+    await handlePaymentMethod(ctx, 'cash');
+  } catch (error) {
+    console.error('Erreur paiement cash:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du paiement cash');
+  }
+});
+
+bot.action('ask_discount', checkCartNotEmpty, async (ctx) => {
+  try {
+    await handleDiscountRequest(ctx);
+  } catch (error) {
+    console.error('Erreur demande remise:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la demande de remise');
+  }
+});
+
+bot.action('confirm_discount_request', checkCartNotEmpty, async (ctx) => {
+  try {
+    await confirmDiscountRequest(ctx);
+  } catch (error) {
+    console.error('Erreur confirmation remise:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la confirmation');
+  }
+});
+
+// Callbacks admin - GESTION D'ERREURS
+bot.action('admin_stats', isAdmin, async (ctx) => {
+  try {
+    await showAdminStats(ctx);
+  } catch (error) {
+    console.error('Erreur stats admin:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du chargement des stats');
+  }
+});
+
+bot.action('admin_pending_orders', isAdmin, async (ctx) => {
+  try {
+    await showPendingOrders(ctx);
+  } catch (error) {
+    console.error('Erreur commandes admin:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du chargement des commandes');
+  }
+});
+
+bot.action(/admin_process_(\d+)/, isAdmin, async (ctx) => {
+  try {
+    await handleOrderAction(ctx, parseInt(ctx.match[1]), 'process');
+  } catch (error) {
+    console.error('Erreur traitement commande:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du traitement');
+  }
+});
+
+bot.action(/admin_contact_(\d+)/, isAdmin, async (ctx) => {
+  try {
+    await handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact');
+  } catch (error) {
+    console.error('Erreur contact commande:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du contact');
+  }
+});
+
+bot.action(/admin_cancel_(\d+)/, isAdmin, async (ctx) => {
+  try {
+    await handleOrderAction(ctx, parseInt(ctx.match[1]), 'cancel');
+  } catch (error) {
+    console.error('Erreur annulation commande:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de l\'annulation');
+  }
+});
+
+// Gestion des erreurs globale AMÉLIORÉE
+bot.catch(async (err, ctx) => {
   console.error('❌ Erreur bot:', err);
-  ctx.reply('❌ Une erreur est survenue. Veuillez réessayer.');
+  try {
+    await ctx.reply('❌ Une erreur est survenue. Veuillez réessayer.');
+  } catch (replyError) {
+    console.error('Impossible d\'envoyer le message d\'erreur:', replyError);
+  }
 });
 
-// Nettoyage des paniers anciens toutes les heures
-setInterval(() => {
-  cartService.cleanupOldCarts();
-  console.log('🧹 Nettoyage des paniers anciens effectué');
+// Gestion des messages non reconnus
+bot.on('message', async (ctx) => {
+  await ctx.reply(
+    '🤖 *Bot CaliParis*\n\n' +
+    'Utilisez les boutons du menu ou les commandes suivantes:\n' +
+    '• /start - Redémarrer le bot\n' +
+    '• 📦 Voir le catalogue\n' +
+    '• 🛒 Mon panier\n' +
+    '• ℹ️ Informations\n' +
+    '• 📞 Contact',
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// Nettoyage des paniers anciens avec GESTION D'ERREURS
+setInterval(async () => {
+  try {
+    await cartService.cleanupOldCarts();
+    console.log('🧹 Nettoyage des paniers anciens effectué');
+  } catch (error) {
+    console.error('❌ Erreur nettoyage paniers:', error);
+  }
 }, 60 * 60 * 1000);
 
-// Démarrage du bot
-sequelize.sync()
-  .then(async () => {
+// Démarrage du bot avec MEILLEURE GESTION D'ERREURS
+async function startBot() {
+  try {
+    await sequelize.authenticate();
+    console.log('✅ Connexion BD réussie');
+    
+    await sequelize.sync();
     console.log('✅ Base de données synchronisée');
     
     // Charger les produits initiaux si nécessaire
@@ -156,22 +324,26 @@ sequelize.sync()
       require('./scripts/initializeProducts')();
     }
     
-    bot.launch();
+    await bot.launch();
     console.log('🤖 Bot CaliParis démarré!');
-  })
-  .catch(error => {
+    
+  } catch (error) {
     console.error('❌ Erreur démarrage bot:', error);
-  });
+    process.exit(1);
+  }
+}
+
+startBot();
 
 // Gestion propre de l'arrêt
 process.once('SIGINT', () => {
-  console.log('🛑 Arrêt du bot...');
+  console.log('🛑 Arrêt du bot (SIGINT)...');
   bot.stop('SIGINT');
   process.exit(0);
 });
 
 process.once('SIGTERM', () => {
-  console.log('🛑 Arrêt du bot...');
+  console.log('🛑 Arrêt du bot (SIGTERM)...');
   bot.stop('SIGTERM');
   process.exit(0);
 });
