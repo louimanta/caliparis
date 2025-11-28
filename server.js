@@ -1,5 +1,6 @@
+
 const express = require('express');
-const bot = require('./bot'); // Import de votre bot complet
+const bot = require('./bot'); // Import de votre bot complet avec tous les handlers
 const { sequelize, syncDatabase } = require('./models');
 
 const app = express();
@@ -13,7 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 let dbConnected = false;
 let botStarted = false;
 
-// Health check endpoint
+// Health check endpoint amélioré
 app.get('/health', async (req, res) => {
   try {
     // Test rapide de la base de données
@@ -60,85 +61,21 @@ app.post('/reconnect-db', async (req, res) => {
   }
 });
 
-// Endpoint pour configurer le webhook
-app.post('/setup-webhook', async (req, res) => {
-  try {
-    const webhookPath = `/webhook/${bot.secretPathComponent()}`;
-    const webhookUrl = `https://caliparis.onrender.com${webhookPath}`;
-    
-    console.log('🔄 Configuration du webhook...');
-    console.log('📡 URL:', webhookUrl);
-    
-    const result = await bot.telegram.setWebhook(webhookUrl);
-    
-    res.json({
-      success: true,
-      webhookUrl: webhookUrl,
-      result: result,
-      message: 'Webhook configuré avec succès'
-    });
-  } catch (error) {
-    console.error('❌ Erreur configuration webhook:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// Endpoint pour vérifier le webhook
-app.get('/webhook-info', async (req, res) => {
-  try {
-    const webhookInfo = await bot.telegram.getWebhookInfo();
-    res.json({
-      webhookInfo: webhookInfo,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error.message
-    });
-  }
-});
-
-// Route principale
+// Routes basiques pour le bot (mode dégradé)
 app.get('/', (req, res) => {
   res.json({
     service: 'CaliParis Bot',
     status: 'running',
     database: dbConnected ? 'connected' : 'disconnected',
-    webhook: 'https://caliparis.onrender.com/webhook/' + bot.secretPathComponent(),
-    endpoints: {
-      health: '/health',
-      webhookSetup: '/setup-webhook (POST)',
-      webhookInfo: '/webhook-info'
-    }
+    message: dbConnected ? 'Service complet opérationnel' : 'Mode dégradé - Base de données hors ligne'
   });
 });
-
-// ==================== CONFIGURATION WEBHOOK ====================
 
 // Webhook pour production
 if (process.env.NODE_ENV === 'production') {
   const webhookPath = `/webhook/${bot.secretPathComponent()}`;
-  const webhookUrl = `https://caliparis.onrender.com${webhookPath}`;
-  
-  console.log('🌐 Configuration du webhook Telegram...');
-  console.log('📡 URL:', webhookUrl);
-  
-  // Configurer le webhook automatiquement
-  bot.telegram.setWebhook(webhookUrl)
-    .then(() => {
-      console.log('✅ Webhook Telegram configuré avec succès!');
-      console.log('🔗 URL:', webhookUrl);
-    })
-    .catch(error => {
-      console.error('❌ Erreur configuration webhook:', error);
-      console.log('💡 Solution: Exécutez POST /setup-webhook pour configurer manuellement');
-    });
-  
   app.use(bot.webhookCallback(webhookPath));
-  console.log(`🌐 Webhook interne configuré sur: ${webhookPath}`);
+  console.log(`🌐 Webhook configuré sur: ${webhookPath}`);
 }
 
 // Route 404
@@ -155,8 +92,7 @@ app.use((error, req, res, next) => {
   });
 });
 
-// ==================== DÉMARRAGE APPLICATION ====================
-
+// Fonction de démarrage principale
 async function startApplication() {
   console.log('🚀 Démarrage de CaliParis Bot...');
   console.log('🔍 Vérification des variables d\'environnement:');
@@ -185,37 +121,24 @@ async function startApplication() {
     console.log(`🚀 Serveur démarré sur le port ${PORT}`);
     console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔗 Health check: https://caliparis.onrender.com/health`);
-    console.log(`🔗 Webhook setup: https://caliparis.onrender.com/setup-webhook (POST)`);
-    console.log(`🔗 Webhook info: https://caliparis.onrender.com/webhook-info`);
     console.log(`🗄️  Base de données: ${dbConnected ? '✅ Connectée' : '❌ Déconnectée'}`);
     
     if (!dbConnected) {
       console.log('⚠️  MODE DÉGRADÉ: Le bot fonctionne sans base de données');
+      console.log('🔧 Solutions:');
+      console.log('   1. Vérifiez la configuration PostgreSQL sur Render');
+      console.log('   2. Vérifiez que le service PostgreSQL est running');
+      console.log('   3. Testez la connexion manuellement');
     }
   });
 
   // Démarrer le bot
   try {
     if (process.env.NODE_ENV === 'production') {
-      // En production, le webhook est configuré automatiquement
+      // En production, le webhook est déjà configuré
       botStarted = true;
       console.log('🤖 Bot prêt (mode webhook)');
-      
-      // Vérifier le statut du webhook après un délai
-      setTimeout(async () => {
-        try {
-          const webhookInfo = await bot.telegram.getWebhookInfo();
-          console.log('📊 Statut webhook:', webhookInfo.url ? '✅ Actif' : '❌ Inactif');
-          if (webhookInfo.url) {
-            console.log('📍 URL webhook:', webhookInfo.url);
-          }
-        } catch (error) {
-          console.error('❌ Erreur vérification webhook:', error);
-        }
-      }, 3000);
-      
     } else {
-      // En développement, utiliser le mode polling
       await bot.launch();
       botStarted = true;
       console.log('🤖 Bot démarré (mode polling)');
