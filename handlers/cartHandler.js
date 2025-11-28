@@ -1,3 +1,4 @@
+
 const { Cart, Product } = require('../models');
 
 async function handleAddToCart(ctx, productId, quantity) {
@@ -62,6 +63,11 @@ async function handleCustomQuantity(ctx, productId) {
       }
     );
 
+    // Initialiser la session si elle n'existe pas
+    if (!ctx.session) {
+      ctx.session = {};
+    }
+    
     // Stocker l'attente dans la session
     ctx.session.waitingForCustomQuantity = {
       productId: productId,
@@ -76,7 +82,7 @@ async function handleCustomQuantity(ctx, productId) {
 
 async function handleCustomQuantityResponse(ctx) {
   try {
-    if (!ctx.session.waitingForCustomQuantity) {
+    if (!ctx.session || !ctx.session.waitingForCustomQuantity) {
       return;
     }
 
