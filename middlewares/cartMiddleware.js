@@ -1,16 +1,24 @@
-const cartService = require('../services/cartService');
+const { Cart } = require('../models');
 
-function checkCartNotEmpty(ctx, next) {
-  const cart = cartService.getCart(ctx.from.id);
-  
-  if (cart.items.length === 0) {
-    if (ctx.callbackQuery) {
-      return ctx.answerCbQuery('❌ Votre panier est vide');
+async function checkCartNotEmpty(ctx, next) {
+  try {
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    
+    if (!cart || cart.items.length === 0) {
+      if (ctx.callbackQuery) {
+        return ctx.answerCbQuery('❌ Votre panier est vide');
+      }
+      return ctx.reply('❌ Votre panier est vide. Ajoutez des produits d\'abord.');
     }
-    return ctx.reply('❌ Votre panier est vide. Ajoutez des produits d\'abord.');
+    
+    return next();
+  } catch (error) {
+    console.error('Erreur vérification panier:', error);
+    if (ctx.callbackQuery) {
+      return ctx.answerCbQuery('❌ Erreur vérification panier');
+    }
+    return ctx.reply('❌ Erreur vérification panier');
   }
-  
-  return next();
 }
 
 function validateQuantity(ctx, next) {
@@ -25,10 +33,16 @@ function validateQuantity(ctx, next) {
   return next();
 }
 
-function updateCartTimestamp(ctx, next) {
-  // Met à jour le timestamp du panier à chaque interaction
-  const cart = cartService.getCart(ctx.from.id);
-  cart.updatedAt = new Date();
+async function updateCartTimestamp(ctx, next) {
+  try {
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    if (cart) {
+      cart.lastActivity = new Date();
+      await cart.save();
+    }
+  } catch (error) {
+    console.error('Erreur mise à jour timestamp:', error);
+  }
   
   return next();
 }
