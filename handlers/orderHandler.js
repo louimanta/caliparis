@@ -1,255 +1,229 @@
-const { Order, OrderItem, Customer, Cart, Product } = require('../models');
+// handlers/orderHandler.js
+const { Order, Product, User } = require('../models');
+const notificationService = require('../services/notificationService');
 
 async function handleCheckout(ctx) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    
-    if (!cart || cart.items.length === 0) {
-      return ctx.answerCbQuery('❌ Votre panier est vide');
+    console.log(`💰 handleCheckout - User: ${ctx.from.id}`);
+    console.log(`📦 Panier:`, ctx.session.cart);
+
+    if (!ctx.session.cart || ctx.session.cart.length === 0) {
+      await ctx.answerCbQuery('❌ Votre panier est vide');
+      return;
     }
 
-    const message = `
-💰 *Passer la commande*
+    // Calculer le total
+    let total = 0;
+    let orderDetails = '';
 
-🛒 *Récapitulatif de votre panier:*
-${cart.items.map(item => `• ${item.quantity}g - ${item.name}`).join('\n')}
+    for (const item of ctx.session.cart) {
+      const itemTotal = parseFloat(item.price) * item.quantity;
+      total += itemTotal;
+      orderDetails += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+    }
 
-💵 *Total: ${cart.totalAmount}€*
+    const message = 
+      `💰 *Passer Commande - CaliParis*\n\n` +
+      `${orderDetails}\n` +
+      `💶 *Total: ${total}€*\n\n` +
+      `Choisissez votre méthode de paiement:`;
 
-💳 *Choisissez votre méthode de paiement:*
-    `.trim();
-
-    const keyboard = {
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [
-            { text: '💰 Crypto (BTC/ETH)', callback_data: 'pay_crypto' },
-            { text: '💵 Cash à la livraison', callback_data: 'pay_cash' }
-          ],
-          [
-            { text: '🎁 Demander remise (+30g)', callback_data: 'ask_discount' }
-          ],
-          [
-            { text: '⬅️ Retour au panier', callback_data: 'back_to_cart' }
-          ]
+          [{ text: '💳 Paiement Crypto', callback_data: 'pay_crypto' }],
+          [{ text: '💵 Paiement Cash', callback_data: 'pay_cash' }],
+          [{ text: '💎 Demander une remise (30g+)', callback_data: 'ask_discount' }],
+          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
+          [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }]
         ]
-      },
-      parse_mode: 'Markdown'
-    };
+      }
+    });
 
-    await ctx.reply(message, keyboard);
     await ctx.answerCbQuery();
-    
+
   } catch (error) {
-    console.error('Erreur checkout:', error);
+    console.error('❌ Erreur dans handleCheckout:', error);
     await ctx.answerCbQuery('❌ Erreur lors du checkout');
   }
 }
 
 async function handlePaymentMethod(ctx, method) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    
-    if (!cart || cart.items.length === 0) {
-      return ctx.answerCbQuery('❌ Votre panier est vide');
+    console.log(`💳 handlePaymentMethod - User: ${ctx.from.id}, Method: ${method}`);
+
+    if (!ctx.session.cart || ctx.session.cart.length === 0) {
+      await ctx.answerCbQuery('❌ Votre panier est vide');
+      return;
     }
 
-    // Trouver ou créer le client
-    let customer = await Customer.findOne({ where: { telegramId: ctx.from.id } });
-    if (!customer) {
-      customer = await Customer.create({
-        telegramId: ctx.from.id,
-        username: ctx.from.username,
-        firstName: ctx.from.first_name,
-        lastName: ctx.from.last_name
-      });
+    // Calculer le total
+    let total = 0;
+    let orderDetails = '';
+
+    for (const item of ctx.session.cart) {
+      const itemTotal = parseFloat(item.price) * item.quantity;
+      total += itemTotal;
+      orderDetails += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
     }
-
-    // Créer la commande
-    const order = await Order.create({
-      customerId: customer.id,
-      totalAmount: cart.totalAmount,
-      paymentMethod: method,
-      status: 'pending',
-      deliveryAddress: customer.deliveryAddress || 'À confirmer'
-    });
-
-    // Créer les order items
-    for (const item of cart.items) {
-      await OrderItem.create({
-        orderId: order.id,
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.totalPrice
-      });
-
-      // Mettre à jour le stock
-      const product = await Product.findByPk(item.productId);
-      if (product) {
-        product.stock -= item.quantity;
-        await product.save();
-      }
-    }
-
-    // Vider le panier
-    cart.items = [];
-    cart.totalAmount = 0;
-    await cart.save();
 
     let paymentMessage = '';
-    
+    let keyboard = [];
+
     if (method === 'crypto') {
-      paymentMessage = `
-✅ *Commande #${order.id} créée!*
+      paymentMessage = 
+        `💳 *Paiement Crypto*\n\n` +
+        `${orderDetails}\n` +
+        `💶 *Total: ${total}€*\n\n` +
+        `📧 *Instructions de paiement:*\n` +
+        `1. Contactez @Caliplatesparis pour les détails de paiement\n` +
+        `2. Envoyez la preuve de transaction\n` +
+        `3. Livraison sous 24h-48h\n\n` +
+        `📍 Zone de livraison: Paris et banlieue`;
 
-💳 *Paiement Crypto:*
-• Envoyez ${cart.totalAmount}€ en BTC ou ETH
-• Adresse: **1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa**
-• Contactez-nous après paiement
+      keyboard = [
+        [{ text: '📞 Contacter pour paiement', url: 'https://t.me/Caliplatesparis' }],
+        [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }],
+        [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
+      ];
 
-📦 *Livraison:*
-• Sous 24-48h dans Paris
-• Emballage discret garanti
+    } else if (method === 'cash') {
+      paymentMessage = 
+        `💵 *Paiement Cash*\n\n` +
+        `${orderDetails}\n` +
+        `💶 *Total: ${total}€*\n\n` +
+        `📞 *Instructions de paiement:*\n` +
+        `1. Contactez @Caliplatesparis pour organiser la livraison\n` +
+        `2. Paiement en espèces à la livraison\n` +
+        `3. Livraison sous 24h-48h\n\n` +
+        `📍 Zone de livraison: Paris et banlieue`;
 
-🆔 *Référence: CALI-${order.id}*
-      `;
-    } else {
-      paymentMessage = `
-✅ *Commande #${order.id} créée!*
-
-💵 *Paiement Cash:*
-• Paiement à la livraison
-• Préparer le montant exact: ${cart.totalAmount}€
-
-📦 *Livraison:*
-• Sous 24-48h dans Paris
-• Emballage discret garanti
-
-🆔 *Référence: CALI-${order.id}*
-      `;
+      keyboard = [
+        [{ text: '📞 Contacter pour livraison', url: 'https://t.me/Caliplatesparis' }],
+        [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }],
+        [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
+      ];
     }
 
-    // Message de confirmation au client
-    await ctx.reply(paymentMessage, { parse_mode: 'Markdown' });
+    await ctx.reply(paymentMessage, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
 
-    // Notification admin
-    const adminMessage = `
-🆕 *NOUVELLE COMMANDE #${order.id}*
+    // Créer la commande en base de données
+    await createOrder(ctx, method, total);
 
-👤 Client: ${customer.firstName} ${customer.lastName} (@${customer.username})
-💰 Montant: ${order.totalAmount}€
-💳 Paiement: ${method === 'crypto' ? 'Crypto' : 'Cash'}
-📦 Produits: ${cart.items.map(item => `${item.quantity}g ${item.name}`).join(', ')}
+    await ctx.answerCbQuery();
 
-🆔 Référence: CALI-${order.id}
-    `.trim();
-
-    // Envoyer la notification admin via le contexte
-    if (process.env.ADMIN_CHAT_ID) {
-      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, adminMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '✅ Traiter', callback_data: `admin_process_${order.id}` },
-              { text: '📞 Contacter', callback_data: `admin_contact_${order.id}` }
-            ]
-          ]
-        }
-      });
-    }
-
-    await ctx.answerCbQuery('✅ Commande créée!');
-    
   } catch (error) {
-    console.error('Erreur création commande:', error);
-    await ctx.answerCbQuery('❌ Erreur création commande');
+    console.error('❌ Erreur dans handlePaymentMethod:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du choix du paiement');
+  }
+}
+
+async function createOrder(ctx, paymentMethod, total) {
+  try {
+    const order = await Order.create({
+      userId: ctx.from.id,
+      username: ctx.from.username || ctx.from.first_name,
+      items: ctx.session.cart,
+      total: total,
+      paymentMethod: paymentMethod,
+      status: 'pending'
+    });
+
+    console.log(`✅ Commande créée: ${order.id}`);
+
+    // Notifier les admins
+    await notificationService.notifyAdmins(
+      `🆕 Nouvelle commande #${order.id}\n` +
+      `Client: @${ctx.from.username || ctx.from.first_name}\n` +
+      `Total: ${total}€\n` +
+      `Paiement: ${paymentMethod}`
+    );
+
+    // Vider le panier après commande
+    ctx.session.cart = [];
+    ctx.session = { ...ctx.session };
+
+    return order;
+
+  } catch (error) {
+    console.error('❌ Erreur création commande:', error);
+    throw error;
   }
 }
 
 async function handleDiscountRequest(ctx) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    
-    if (!cart) {
-      return ctx.answerCbQuery('❌ Panier vide');
-    }
+    console.log(`💎 handleDiscountRequest - User: ${ctx.from.id}`);
 
-    const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    
+    // Calculer la quantité totale
+    const totalQuantity = ctx.session.cart.reduce((sum, item) => sum + item.quantity, 0);
+
     if (totalQuantity < 30) {
-      return ctx.answerCbQuery('❌ Remise disponible à partir de 30g');
+      await ctx.answerCbQuery('❌ Remise disponible à partir de 30g');
+      return;
     }
 
-    const message = `
-💎 *Demande de Remise*
+    const message = 
+      `💎 *Demande de Remise - Commandes en Gros*\n\n` +
+      `Votre commande totale: ${totalQuantity}g\n\n` +
+      `📞 Contactez @Caliplatesparis pour:\n` +
+      `• Obtenir un prix spécial\n` +
+      `• Discuter des conditions de livraison\n` +
+      `• Personnaliser votre commande\n\n` +
+      `*Remises progressives selon la quantité!*`;
 
-📦 Quantité totale: ${totalQuantity}g
-💰 Total actuel: ${cart.totalAmount}€
-
-🎁 *Remises automatiques:*
-• 30g+: 10% de remise
-• 50g+: 15% de remise
-• 100g+: 20% de remise
-
-Confirmez-vous la demande de remise?
-    `.trim();
-
-    const keyboard = {
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [
-            { text: '✅ Confirmer', callback_data: 'confirm_discount_request' },
-            { text: '❌ Annuler', callback_data: 'back_to_cart' }
-          ]
+          [{ text: '📞 Contacter pour remise', url: 'https://t.me/Caliplatesparis' }],
+          [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }],
+          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
         ]
-      },
-      parse_mode: 'Markdown'
-    };
+      }
+    });
 
-    await ctx.reply(message, keyboard);
     await ctx.answerCbQuery();
-    
+
   } catch (error) {
-    console.error('Erreur demande remise:', error);
-    await ctx.answerCbQuery('❌ Erreur demande remise');
+    console.error('❌ Erreur dans handleDiscountRequest:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la demande de remise');
   }
 }
 
 async function confirmDiscountRequest(ctx) {
   try {
-    // Notification admin pour remise
-    const adminMessage = `
-💎 *DEMANDE DE REMISE*
-
-👤 Client: ${ctx.from.first_name} ${ctx.from.last_name} (@${ctx.from.username})
-📊 Demande une remise pour grosse quantité
-
-💬 Contactez le client pour finaliser
-    `.trim();
-
-    if (process.env.ADMIN_CHAT_ID) {
-      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, adminMessage, {
-        parse_mode: 'Markdown'
-      });
-    }
+    await ctx.answerCbQuery('📞 Redirection vers le support...');
 
     await ctx.reply(
-      '✅ Demande de remise envoyée! 📞\n\n' +
-      'Notre équipe vous contactera sous peu pour finaliser votre commande avec remise.'
+      `💎 *Contact Support CaliParis*\n\n` +
+      `Contactez @Caliplatesparis pour discuter de votre commande en gros et obtenir les meilleurs prix!`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📞 Contacter maintenant', url: 'https://t.me/Caliplatesparis' }],
+            [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }]
+          ]
+        }
+      }
     );
-    await ctx.answerCbQuery();
-    
+
   } catch (error) {
-    console.error('Erreur confirmation remise:', error);
-    await ctx.answerCbQuery('❌ Erreur confirmation remise');
+    console.error('❌ Erreur dans confirmDiscountRequest:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la confirmation');
   }
 }
 
-module.exports = { 
-  handleCheckout, 
-  handlePaymentMethod, 
-  handleDiscountRequest, 
-  confirmDiscountRequest 
+module.exports = {
+  handleCheckout,
+  handlePaymentMethod,
+  handleDiscountRequest,
+  confirmDiscountRequest
 };
