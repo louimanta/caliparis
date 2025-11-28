@@ -1,10 +1,14 @@
 const { Markup } = require('telegraf');
 const { Product } = require('../models');
+const { Op } = require('sequelize');
 
 async function showProducts(ctx) {
   try {
     const products = await Product.findAll({ 
-      where: { isActive: true, stock: { $gt: 0 } },
+      where: { 
+        isActive: true, 
+        stock: { [Op.gt]: 0 }  // Correction pour Sequelize
+      },
       order: [['name', 'ASC']]
     });
 
@@ -22,8 +26,6 @@ async function showProducts(ctx) {
       const message = `
 🛍️ *${product.name}*
 💰 ${product.price}€/g
-📊 ${product.thc ? `THC: ${product.thc}` : ''}
-👃 ${product.aroma ? `Arôme: ${product.aroma}` : ''}
 📝 ${product.description}
 📦 Stock: ${product.stock}g disponible(s)
 
@@ -47,8 +49,8 @@ _Choisissez la quantité :_
         ]
       ]);
 
-      if (product.image) {
-        await ctx.replyWithPhoto(product.image, {
+      if (product.imageUrl) {  // Changé de image à imageUrl
+        await ctx.replyWithPhoto(product.imageUrl, {
           caption: message,
           parse_mode: 'Markdown',
           ...keyboard
@@ -73,11 +75,11 @@ _Choisissez la quantité :_
 async function showProductVideo(ctx, productId) {
   try {
     const product = await Product.findByPk(productId);
-    if (!product || !product.video) {
+    if (!product || !product.videoUrl) {  // Changé de video à videoUrl
       return ctx.answerCbQuery('❌ Vidéo non disponible pour ce produit');
     }
 
-    await ctx.replyWithVideo(product.video, {
+    await ctx.replyWithVideo(product.videoUrl, {
       caption: `🎬 *${product.name}*\n${product.description}`,
       parse_mode: 'Markdown'
     });
@@ -100,9 +102,7 @@ async function showProductDetails(ctx, productId) {
 🔍 *Détails Complets - ${product.name}*
 
 📊 *Informations techniques:*
-• ${product.thc ? `THC: ${product.thc}` : 'THC: Non spécifié'}
-• ${product.aroma ? `Arôme: ${product.aroma}` : 'Arôme: Non spécifié'}
-• ${product.category ? `Type: ${product.category}` : 'Type: Non spécifié'}
+• Type: ${product.category || 'Non spécifié'}
 
 📝 *Description:*
 ${product.description}
