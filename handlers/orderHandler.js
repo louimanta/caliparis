@@ -1,273 +1,227 @@
-// handlers/orderHandler.js
-const { Order, Product, User } = require('../models');
-const notificationService = require('../services/notificationService');
+const { Order, OrderItem, Customer, Cart, Product } = require('../models');
+const notificationService = require('./notificationService');
 
 async function handleCheckout(ctx) {
   try {
-    console.log(`💰 handleCheckout - User: ${ctx.from.id}`);
-    console.log(`📦 Panier:`, ctx.session.cart);
-
-    if (!ctx.session.cart || ctx.session.cart.length === 0) {
-      await ctx.answerCbQuery('❌ Votre panier est vide');
-      return;
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    
+    if (!cart || cart.items.length === 0) {
+      return ctx.answerCbQuery('❌ Votre panier est vide');
     }
 
-    // Calculer le total
-    let total = 0;
-    let orderDetails = '';
+    const message = `
+💰 *Passer la commande*
 
-    for (const item of ctx.session.cart) {
-      const itemTotal = parseFloat(item.price) * item.quantity;
-      total += itemTotal;
-      orderDetails += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-    }
+🛒 *Récapitulatif de votre panier:*
+${cart.items.map(item => `• ${item.quantity}g - ${item.name}`).join('\n')}
 
-    const message = 
-      `💰 *Passer Commande - CaliParis*\n\n` +
-      `${orderDetails}\n` +
-      `💶 *Total: ${total}€*\n\n` +
-      `Choisissez votre méthode de paiement:`;
+💵 *Total: ${cart.totalAmount}€*
 
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
+💳 *Choisissez votre méthode de paiement:*
+    `.trim();
+
+    const keyboard = {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '💳 Paiement Crypto', callback_data: 'pay_crypto' }],
-          [{ text: '💵 Paiement Cash', callback_data: 'pay_cash' }],
-          [{ text: '💎 Demander une remise (30g+)', callback_data: 'ask_discount' }],
-          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
-          [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }]
+          [
+            { text: '💰 Crypto (BTC/ETH)', callback_data: 'pay_crypto' },
+            { text: '💵 Cash à la livraison', callback_data: 'pay_cash' }
+          ],
+          [
+            { text: '🎁 Demander remise (+30g)', callback_data: 'ask_discount' }
+          ],
+          [
+            { text: '⬅️ Retour au panier', callback_data: 'back_to_cart' }
+          ]
         ]
-      }
-    });
+      },
+      parse_mode: 'Markdown'
+    };
 
+    await ctx.reply(message, keyboard);
     await ctx.answerCbQuery();
-
+    
   } catch (error) {
-    console.error('❌ Erreur dans handleCheckout:', error);
+    console.error('Erreur checkout:', error);
     await ctx.answerCbQuery('❌ Erreur lors du checkout');
   }
 }
 
 async function handlePaymentMethod(ctx, method) {
   try {
-    console.log(`💳 handlePaymentMethod - User: ${ctx.from.id}, Method: ${method}`);
-
-    if (!ctx.session.cart || ctx.session.cart.length === 0) {
-      await ctx.answerCbQuery('❌ Votre panier est vide');
-      return;
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    
+    if (!cart || cart.items.length === 0) {
+      return ctx.answerCbQuery('❌ Votre panier est vide');
     }
 
-    // Calculer le total
-    let total = 0;
-    let orderDetails = '';
-
-    for (const item of ctx.session.cart) {
-      const itemTotal = parseFloat(item.price) * item.quantity;
-      total += itemTotal;
-      orderDetails += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+    // Trouver ou créer le client
+    let customer = await Customer.findOne({ where: { telegramId: ctx.from.id } });
+    if (!customer) {
+      customer = await Customer.create({
+        telegramId: ctx.from.id,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name
+      });
     }
+
+    // Créer la commande
+    const order = await Order.create({
+      customerId: customer.id,
+      totalAmount: cart.totalAmount,
+      paymentMethod: method,
+      status: 'pending',
+      deliveryAddress: customer.deliveryAddress || 'À confirmer'
+    });
+
+    // Créer les order items et mettre à jour le stock
+    for (const item of cart.items) {
+      await OrderItem.create({
+        orderId: order.id,
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice
+      });
+
+      // Mettre à jour le stock
+      const product = await Product.findByPk(item.productId);
+      if (product) {
+        product.stock -= item.quantity;
+        await product.save();
+
+        // Notifier si stock faible
+        if (product.stock < 10) {
+          await notificationService.notifyLowStock(ctx, product);
+        }
+      }
+    }
+
+    // Vider le panier
+    cart.items = [];
+    cart.totalAmount = 0;
+    await cart.save();
 
     let paymentMessage = '';
-    let keyboard = [];
-
+    
     if (method === 'crypto') {
-      paymentMessage = 
-        `💳 *Commande Crypto Confirmée!* ✅\n\n` +
-        `${orderDetails}\n` +
-        `💶 *Total: ${total}€*\n\n` +
-        `📧 *Votre commande a été envoyée*\n` +
-        `• Nous vous contactons sous 24h\n` +
-        `• Pour les détails de paiement crypto\n` +
-        `• Livraison sous 2h-4h\n\n` +
-        `📍 Zone de livraison: Paris et banlieue\n\n` +
-        `🛒 Merci pour votre confiance!`;
+      paymentMessage = `
+✅ *Commande #${order.id} créée!*
 
-      keyboard = [
-        [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }],
-        [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
-      ];
+💳 *Paiement Crypto:*
+• Envoyez ${order.totalAmount}€ en BTC ou ETH
+• Adresse: **1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa**
+• Contactez-nous après paiement
 
-    } else if (method === 'cash') {
-      paymentMessage = 
-        `💵 *Commande Cash Confirmée!* ✅\n\n` +
-        `${orderDetails}\n` +
-        `💶 *Total: ${total}€*\n\n` +
-        `📞 *Votre commande a été envoyée*\n` +
-        `• Nous vous contactons sous 24h\n` +
-        `• Pour organiser la livraison\n` +
-        `• Paiement en espèces à la livraison\n` +
-        `• Livraison sous 2h-4h\n\n` +
-        `📍 Zone de livraison: Paris et banlieue\n\n` +
-        `🛒 Merci pour votre confiance!`;
+📦 *Livraison:*
+• Sous 24-48h dans Paris
+• Emballage discret garanti
 
-      keyboard = [
-        [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }],
-        [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
-      ];
+🆔 *Référence: CALI-${order.id}*
+      `;
+    } else {
+      paymentMessage = `
+✅ *Commande #${order.id} créée!*
+
+💵 *Paiement Cash:*
+• Paiement à la livraison
+• Préparer le montant exact: ${order.totalAmount}€
+
+📦 *Livraison:*
+• Sous 24-48h dans Paris
+• Emballage discret garanti
+
+🆔 *Référence: CALI-${order.id}*
+      `;
     }
 
-    await ctx.reply(paymentMessage, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: keyboard
-      }
-    });
+    // Message de confirmation au client
+    await ctx.reply(paymentMessage, { parse_mode: 'Markdown' });
 
-    // Créer la commande en base de données
-    await createOrder(ctx, method, total);
+    // Notification admin
+    await notificationService.notifyAdmin(ctx, order, customer, cart);
 
-    await ctx.answerCbQuery();
-
-  } catch (error) {
-    console.error('❌ Erreur dans handlePaymentMethod:', error);
-    await ctx.answerCbQuery('❌ Erreur lors du choix du paiement');
-  }
-}
-
-async function createOrder(ctx, paymentMethod, total) {
-  try {
-    const order = await Order.create({
-      userId: ctx.from.id,
-      username: ctx.from.username || ctx.from.first_name,
-      items: ctx.session.cart,
-      totalAmount: total,
-      paymentMethod: paymentMethod,
-      status: 'pending'
-    });
-
-    console.log(`✅ Commande créée: ${order.id}`);
-
-    // NOTIFIER AUTOMATIQUEMENT avec tous les détails
-    await notifyNewOrder(order, ctx);
-
-    // Vider le panier après commande
-    ctx.session.cart = [];
-    ctx.session = { ...ctx.session };
-
-    return order;
-
-  } catch (error) {
-    console.error('❌ Erreur création commande:', error);
-    throw error;
-  }
-}
-
-// FONCTION CORRIGÉE: Notification automatique détaillée
-async function notifyNewOrder(order, ctx) {
-  try {
-    const message = notificationService.formatOrderMessage(order, ctx.from, ctx.session.cart);
+    await ctx.answerCbQuery('✅ Commande créée!');
     
-    // Envoyer la notification automatique aux admins
-    await notificationService.notifyAdmins(message);
-
-    console.log(`📤 Notification commande #${order.id} envoyée automatiquement`);
-
   } catch (error) {
-    console.error('❌ Erreur notification commande:', error);
+    console.error('Erreur création commande:', error);
+    await ctx.answerCbQuery('❌ Erreur création commande');
   }
 }
 
 async function handleDiscountRequest(ctx) {
   try {
-    console.log(`💎 handleDiscountRequest - User: ${ctx.from.id}`);
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    
+    if (!cart) {
+      return ctx.answerCbQuery('❌ Panier vide');
+    }
 
-    // Calculer la quantité totale
-    const totalQuantity = ctx.session.cart.reduce((sum, item) => sum + item.quantity, 0);
-
+    const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    
     if (totalQuantity < 30) {
-      await ctx.answerCbQuery('❌ Remise disponible à partir de 30g');
-      return;
+      return ctx.answerCbQuery('❌ Remise disponible à partir de 30g');
     }
 
-    // Calculer le total
-    let total = 0;
-    let orderDetails = '';
+    const message = `
+💎 *Demande de Remise*
 
-    for (const item of ctx.session.cart) {
-      const itemTotal = parseFloat(item.price) * item.quantity;
-      total += itemTotal;
-      orderDetails += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-    }
+📦 Quantité totale: ${totalQuantity}g
+💰 Total actuel: ${cart.totalAmount}€
 
-    const message = 
-      `💎 *Demande de Remise - Commandes en Gros*\n\n` +
-      `${orderDetails}\n` +
-      `💶 *Total: ${total}€*\n\n` +
-      `Votre commande totale: ${totalQuantity}g\n\n` +
-      `📞 *Votre demande a été envoyée*\n` +
-      `• Nous vous contactons des que possible\n` +
-      `• Pour discuter des remises spéciales\n` +
-      `• Et personnaliser votre commande\n\n` +
-      `*Remises progressives selon la quantité!*`;
+🎁 *Remises automatiques:*
+• 30g+: 10% de remise
+• 50g+: 15% de remise
+• 100g+: 20% de remise
 
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
+Confirmez-vous la demande de remise?
+    `.trim();
+
+    const keyboard = {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
-          [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
+          [
+            { text: '✅ Confirmer', callback_data: 'confirm_discount_request' },
+            { text: '❌ Annuler', callback_data: 'back_to_cart' }
+          ]
         ]
-      }
-    });
+      },
+      parse_mode: 'Markdown'
+    };
 
-    // Notifier aussi la demande de remise
-    await notifyDiscountRequest(ctx, totalQuantity, total);
-
+    await ctx.reply(message, keyboard);
     await ctx.answerCbQuery();
-
+    
   } catch (error) {
-    console.error('❌ Erreur dans handleDiscountRequest:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de la demande de remise');
-  }
-}
-
-// Notification pour les demandes de remise
-async function notifyDiscountRequest(ctx, totalQuantity, total) {
-  try {
-    const message = notificationService.formatDiscountMessage(
-      ctx.from, 
-      ctx.session.cart, 
-      totalQuantity, 
-      total
-    );
-
-    await notificationService.notifyAdmins(message);
-    console.log(`📤 Notification remise envoyée pour ${totalQuantity}g`);
-
-  } catch (error) {
-    console.error('❌ Erreur notification remise:', error);
+    console.error('Erreur demande remise:', error);
+    await ctx.answerCbQuery('❌ Erreur demande remise');
   }
 }
 
 async function confirmDiscountRequest(ctx) {
   try {
-    await ctx.answerCbQuery('📞 Demande envoyée...');
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+
+    // Notification admin pour remise
+    await notificationService.notifyDiscountRequest(ctx, ctx.from.id, cart, totalQuantity);
 
     await ctx.reply(
-      `💎 *Demande Envoyée!* ✅\n\n` +
-      `Votre demande de remise a été transmise.\n` +
-      `Nous vous contactons des que possible pour discuter des meilleurs prix!`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
-            [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
-          ]
-        }
-      }
+      '✅ Demande de remise envoyée! 📞\n\n' +
+      'Notre équipe vous contactera sous peu pour finaliser votre commande avec remise.'
     );
-
+    await ctx.answerCbQuery();
+    
   } catch (error) {
-    console.error('❌ Erreur dans confirmDiscountRequest:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de la confirmation');
+    console.error('Erreur confirmation remise:', error);
+    await ctx.answerCbQuery('❌ Erreur confirmation remise');
   }
 }
 
-module.exports = {
-  handleCheckout,
-  handlePaymentMethod,
-  handleDiscountRequest,
-  confirmDiscountRequest
+module.exports = { 
+  handleCheckout, 
+  handlePaymentMethod, 
+  handleDiscountRequest, 
+  confirmDiscountRequest 
 };
