@@ -264,6 +264,11 @@ function startBot() {
 // Démarrer après un délai
 setTimeout(startBot, 2000);
 
+// Ajoutez cette méthode pour le webhook
+bot.secretPathComponent = () => {
+  return 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
+};
+
 // Gestion propre de l'arrêt
 process.once('SIGINT', () => {
   console.log('🛑 Arrêt du bot...');
@@ -276,3 +281,4 @@ process.once('SIGTERM', () => {
 });
 
 module.exports = bot;
+
