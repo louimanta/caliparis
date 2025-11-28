@@ -1,70 +1,99 @@
 const { Cart, Product } = require('../models');
 
-// Fonction sécurisée pour accéder à la base de données
+// Fonction sécurisée pour accéder à la base de données AVEC LOGS
 async function safeDbOperation(operation, fallbackValue = null) {
   try {
-    return await operation();
+    console.log(`🔍 DB Operation: ${operation.name || 'anonymous'}`);
+    const result = await operation();
+    console.log(`✅ DB Operation réussie`);
+    return result;
   } catch (error) {
-    console.error('❌ Erreur base de données:', error.message);
+    console.error(`❌ ERREUR DB dans ${operation.name || 'anonymous'}:`, error.message);
+    console.error('Stack:', error.stack);
     return fallbackValue;
   }
 }
 
 async function handleAddToCart(ctx, productId, quantity) {
   try {
+    console.log(`🛒 DEBUT handleAddToCart - User: ${ctx.from.id}, Produit: ${productId}, Qty: ${quantity}`);
+    
     const product = await safeDbOperation(() => Product.findByPk(productId));
+    console.log(`📦 Produit trouvé:`, product ? product.name : 'NON');
+    
     if (!product) {
+      console.log('❌ Produit non trouvé en DB');
       return ctx.answerCbQuery('❌ Produit non trouvé');
     }
 
     if (product.stock < quantity) {
+      console.log(`❌ Stock insuffisant: ${product.stock} < ${quantity}`);
       return ctx.answerCbQuery('❌ Stock insuffisant');
     }
 
     let cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
+    console.log(`🛍️ Panier existant:`, cart ? 'OUI' : 'NON');
     
     if (!cart) {
+      console.log(`🆕 Création nouveau panier pour user: ${ctx.from.id}`);
       cart = await safeDbOperation(() => Cart.create({
         telegramId: ctx.from.id,
         items: []
       }));
       
       if (!cart) {
+        console.log('❌ Échec création panier');
         return ctx.answerCbQuery('❌ Erreur création panier');
       }
+      console.log('✅ Nouveau panier créé');
     }
 
+    console.log(`📋 Items avant:`, cart.items);
     const existingItemIndex = cart.items.findIndex(item => item.productId === productId);
+    console.log(`🔍 Item existant index:`, existingItemIndex);
     
     if (existingItemIndex > -1) {
       cart.items[existingItemIndex].quantity += quantity;
       cart.items[existingItemIndex].totalPrice = cart.items[existingItemIndex].quantity * product.price;
+      console.log(`📝 Item mis à jour:`, cart.items[existingItemIndex]);
     } else {
-      cart.items.push({
+      const newItem = {
         productId: productId,
         name: product.name,
         quantity: quantity,
         unitPrice: product.price,
         totalPrice: quantity * product.price
-      });
+      };
+      cart.items.push(newItem);
+      console.log(`🆕 Nouvel item ajouté:`, newItem);
     }
 
     cart.totalAmount = cart.items.reduce((sum, item) => sum + item.totalPrice, 0);
     cart.lastActivity = new Date();
     
-    await safeDbOperation(() => cart.save());
+    console.log(`💾 Sauvegarde panier...`);
+    console.log(`📦 Items après:`, cart.items);
+    console.log(`💰 Total:`, cart.totalAmount);
+    
+    const saved = await safeDbOperation(() => cart.save());
+    console.log(`✅ Panier sauvegardé:`, saved ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
     await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier!`);
     
+    console.log(`🎉 handleAddToCart TERMINÉ avec succès`);
+    
   } catch (error) {
-    console.error('Erreur ajout panier:', error);
+    console.error('💥 ERREUR CRITIQUE handleAddToCart:', error);
+    console.error('Stack:', error.stack);
     await ctx.answerCbQuery('❌ Erreur ajout panier');
   }
 }
 
 async function handleCustomQuantity(ctx, productId) {
   try {
+    console.log(`🔢 Demande quantité personnalisée - Produit: ${productId}`);
+    
     await ctx.reply(
       '🔢 Entrez la quantité souhaitée (en grammes) :\nExemple: 5 pour 5 grammes',
       {
@@ -82,6 +111,8 @@ async function handleCustomQuantity(ctx, productId) {
       timestamp: Date.now()
     };
 
+    console.log(`⏳ Session configurée pour quantité personnalisée`);
+
   } catch (error) {
     console.error('Erreur quantité personnalisée:', error);
     await ctx.answerCbQuery('❌ Erreur lors de la saisie');
@@ -90,20 +121,27 @@ async function handleCustomQuantity(ctx, productId) {
 
 async function handleCustomQuantityResponse(ctx) {
   try {
+    console.log(`📨 Réponse quantité personnalisée reçue:`, ctx.message.text);
+    
     if (!ctx.session.waitingForCustomQuantity) {
+      console.log('❌ Aucune session quantité personnalisée');
       return;
     }
 
     const quantity = parseFloat(ctx.message.text);
     const productId = ctx.session.waitingForCustomQuantity.productId;
 
+    console.log(`🔢 Quantité parsée: ${quantity}, Produit: ${productId}`);
+
     if (isNaN(quantity) || quantity <= 0) {
+      console.log('❌ Quantité invalide');
       await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
       return;
     }
 
     // Supprimer l'état d'attente
     delete ctx.session.waitingForCustomQuantity;
+    console.log('✅ Session quantité personnalisée supprimée');
 
     // Ajouter au panier
     await handleAddToCart(ctx, productId, quantity);
@@ -116,9 +154,13 @@ async function handleCustomQuantityResponse(ctx) {
 
 async function showCart(ctx) {
   try {
+    console.log(`👀 DEBUT showCart - User: ${ctx.from.id}`);
+    
     const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
+    console.log(`🛍️ Panier trouvé:`, cart ? 'OUI' : 'NON');
     
     if (!cart || cart.items.length === 0) {
+      console.log('🛒 Panier vide');
       return ctx.reply(
         '🛒 Votre panier est vide\n\n' +
         '📦 Parcourez notre catalogue pour ajouter des produits!',
@@ -132,13 +174,23 @@ async function showCart(ctx) {
       );
     }
 
+    console.log(`📋 Items dans panier:`, cart.items.length);
+    
     let message = '🛒 *Votre Panier*\n\n';
     let totalAmount = 0;
 
     for (const item of cart.items) {
+      console.log(`🔍 Récupération produit: ${item.productId}`);
       const product = await safeDbOperation(() => Product.findByPk(item.productId));
       if (product) {
         message += `🌿 ${product.name}\n`;
+        message += `   📦 Quantité: ${item.quantity}g\n`;
+        message += `   💰 Prix: ${item.totalPrice}€\n\n`;
+        totalAmount += item.totalPrice;
+        console.log(`✅ Produit affiché: ${product.name}`);
+      } else {
+        console.log(`❌ Produit non trouvé: ${item.productId}`);
+        message += `🌿 Produit #${item.productId} (non trouvé)\n`;
         message += `   📦 Quantité: ${item.quantity}g\n`;
         message += `   💰 Prix: ${item.totalPrice}€\n\n`;
         totalAmount += item.totalPrice;
@@ -149,17 +201,16 @@ async function showCart(ctx) {
 
     // Appliquer remise automatique pour grosses quantités
     const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    let discountMessage = '';
+    console.log(`📊 Quantité totale: ${totalQuantity}g`);
 
     if (totalQuantity >= 30) {
-      discountMessage = '\n\n💎 *Remise Gros Quantité Activée!*';
-      const discount = totalQuantity >= 50 ? 15 : totalQuantity >= 30 ? 10 : 0;
-      message += discountMessage;
+      const discount = totalQuantity >= 50 ? 15 : 10;
+      message += '\n\n💎 *Remise Gros Quantité Activée!*';
       message += `\n📦 Quantité totale: ${totalQuantity}g`;
       message += `\n🎁 Remise: ${discount}% appliquée`;
+      console.log(`🎁 Remise appliquée: ${discount}%`);
     } else if (totalQuantity >= 20) {
-      discountMessage = '\n\n💡 *Ajoutez 10g de plus pour une remise de 10%!*';
-      message += discountMessage;
+      message += '\n\n💡 *Ajoutez 10g de plus pour une remise de 10%!*';
     }
 
     const keyboard = {
@@ -177,22 +228,33 @@ async function showCart(ctx) {
     };
 
     await ctx.reply(message, keyboard);
+    console.log(`✅ showCart TERMINÉ - Message panier envoyé`);
     
   } catch (error) {
-    console.error('Erreur affichage panier:', error);
+    console.error('💥 ERREUR CRITIQUE showCart:', error);
+    console.error('Stack:', error.stack);
     await ctx.reply('❌ Erreur lors du chargement du panier. Veuillez réessayer.');
   }
 }
 
 async function clearCart(ctx) {
   try {
+    console.log(`🗑️ DEBUT clearCart - User: ${ctx.from.id}`);
+    
     const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     if (cart) {
+      console.log(`📋 Items avant vidage:`, cart.items.length);
       cart.items = [];
       cart.totalAmount = 0;
       await safeDbOperation(() => cart.save());
+      console.log('✅ Panier vidé');
+    } else {
+      console.log('ℹ️ Aucun panier à vider');
     }
+    
     await ctx.reply('✅ Panier vidé avec succès');
+    console.log(`✅ clearCart TERMINÉ`);
+    
   } catch (error) {
     console.error('Erreur vidage panier:', error);
     await ctx.reply('❌ Erreur lors du vidage du panier');
