@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const { Telegraf, session } = require('telegraf');
 const { sequelize } = require('./models');
@@ -29,20 +30,16 @@ const sessionStore = {
   sessions: new Map(),
   
   get(key) {
-    console.log(`🔍 Get session for: ${key}`);
     const session = this.sessions.get(key);
-    console.log(`📦 Session retrieved:`, session);
     return Promise.resolve(session || { cart: [] });
   },
   
   set(key, session) {
-    console.log(`💾 Set session for: ${key}`, session);
     this.sessions.set(key, session);
     return Promise.resolve();
   },
   
   delete(key) {
-    console.log(`🗑️ Delete session for: ${key}`);
     this.sessions.delete(key);
     return Promise.resolve();
   }
@@ -51,23 +48,16 @@ const sessionStore = {
 // Middlewares globaux AVEC SESSION STORE
 bot.use(session({ 
   store: sessionStore,
-  defaultSession: () => ({ cart: [] }) // Panier vide par défaut
+  defaultSession: () => ({ cart: [] })
 }));
 bot.use(logUserAction);
 bot.use(rateLimit());
 bot.use(updateCartTimestamp);
 
-// MIDDLEWARE DE DEBUG POUR LES SESSIONS
-bot.use(async (ctx, next) => {
-  console.log('🔄 Session avant traitement:', ctx.session);
-  await next();
-  console.log('💾 Session après traitement:', ctx.session);
-});
-
 // Commandes de base
 bot.start(handleStart);
 
-// Handlers de messages - AVEC ASYNC/AWAIT
+// Handlers de messages
 bot.hears('📦 Voir le catalogue', async (ctx) => {
   await showProducts(ctx);
 });
@@ -128,17 +118,12 @@ bot.hears('/admin', isAdmin, handleAdminCommands);
 bot.hears('/stats', isAdmin, showAdminStats);
 bot.hears('/orders', isAdmin, showPendingOrders);
 
-// Callbacks pour produits - AVEC DEBUG ET GESTION D'ERREURS
+// Callbacks pour produits
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
   try {
     const quantity = parseInt(ctx.match[1]);
     const productId = parseInt(ctx.match[2]);
-    console.log(`🛍️ Ajout au panier - User: ${ctx.from.id}, Product: ${productId}, Qty: ${quantity}`);
-    console.log(`📋 Session avant ajout:`, ctx.session);
-    
     await handleAddToCart(ctx, productId, quantity);
-    
-    console.log(`✅ Session après ajout:`, ctx.session);
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier!`);
   } catch (error) {
     console.error('❌ Erreur ajout panier:', error);
@@ -185,7 +170,7 @@ bot.action(/details_(\d+)/, async (ctx) => {
   }
 });
 
-// Callbacks pour panier - CORRECTION DES CALLBACKS
+// Callbacks pour panier
 bot.action('view_cart', async (ctx) => {
   await showCart(ctx);
 });
@@ -220,7 +205,7 @@ bot.action('clear_cart', async (ctx) => {
   }
 });
 
-// Callbacks pour commande - VALIDATION AMÉLIORÉE
+// Callbacks pour commande
 bot.action('checkout', checkCartNotEmpty, async (ctx) => {
   try {
     await handleCheckout(ctx);
@@ -266,7 +251,7 @@ bot.action('confirm_discount_request', checkCartNotEmpty, async (ctx) => {
   }
 });
 
-// Callbacks admin - GESTION D'ERREURS
+// Callbacks admin
 bot.action('admin_stats', isAdmin, async (ctx) => {
   try {
     await showAdminStats(ctx);
@@ -312,12 +297,10 @@ bot.action(/admin_cancel_(\d+)/, isAdmin, async (ctx) => {
   }
 });
 
-// ✅ AJOUT IMPORTANT: Gestion des messages de quantité personnalisée
+// Gestion des messages de quantité personnalisée
 bot.on('text', async (ctx) => {
-  // Vérifier si c'est un message de quantité personnalisée
   const handled = await handleQuantityMessage(ctx);
   if (!handled) {
-    // Le message n'est pas une quantité, afficher le menu principal
     await ctx.reply(
       '🤖 *Bot CaliParis*\n\n' +
       'Utilisez les boutons du menu pour naviguer:\n' +
@@ -330,7 +313,7 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// Gestion des erreurs globale AMÉLIORÉE
+// Gestion des erreurs globale
 bot.catch(async (err, ctx) => {
   console.error('❌ Erreur bot:', err);
   try {
@@ -340,7 +323,7 @@ bot.catch(async (err, ctx) => {
   }
 });
 
-// Nettoyage des paniers anciens avec GESTION D'ERREURS
+// Nettoyage des paniers anciens
 setInterval(async () => {
   try {
     await cartService.cleanupOldCarts();
@@ -350,7 +333,7 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000);
 
-// Démarrage du bot avec CONFIGURATION WEBHOOK/PRODUCTION
+// Démarrage du bot (pour le mode développement)
 async function startBot() {
   try {
     await sequelize.authenticate();
@@ -367,18 +350,13 @@ async function startBot() {
       require('./scripts/initializeProducts')();
     }
     
-    // CONFIGURATION PRODUCTION/WEBHOOK
-    if (process.env.NODE_ENV === 'production') {
-      console.log('🌐 Mode: Production (Webhook)');
-      
-      // Le webhook est configuré dans server.js
-      console.log('🤖 Bot prêt pour les webhooks');
-      
-    } else {
-      // Mode développement - Polling
+    // Mode développement - Polling
+    if (process.env.NODE_ENV !== 'production') {
       console.log('🔧 Mode: Développement (Polling)');
       await bot.launch();
       console.log('🤖 Bot CaliParis démarré en mode polling!');
+    } else {
+      console.log('🌐 Mode: Production (Webhook) - Prêt');
     }
     
   } catch (error) {
