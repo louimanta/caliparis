@@ -1,5 +1,6 @@
 const { Markup } = require('telegraf');
-const { Order, Product } = require('../models');
+const { Order, Product, Customer, OrderItem } = require('../models');
+const notificationService = require('./notificationService');
 
 async function handleAdminCommands(ctx) {
   const adminIds = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',') : [];
@@ -27,7 +28,7 @@ async function showAdminStats(ctx) {
     const totalOrders = await Order.count();
     const pendingOrders = await Order.count({ where: { status: 'pending' } });
     const totalProducts = await Product.count();
-    const lowStockProducts = await Product.count({ where: { stock: { $lt: 10 } } });
+    const lowStockProducts = await Product.count({ where: { stock: { [Symbol.for('lt')]: 10 } } });
 
     const statsMessage = `
 📊 *Statistiques CaliParis*
@@ -54,6 +55,16 @@ async function showPendingOrders(ctx) {
   try {
     const pendingOrders = await Order.findAll({
       where: { status: 'pending' },
+      include: [
+        {
+          model: Customer,
+          attributes: ['firstName', 'lastName', 'username', 'telegramId']
+        },
+        {
+          model: OrderItem,
+          include: [Product]
+        }
+      ],
       order: [['createdAt', 'ASC']],
       limit: 10
     });
@@ -63,23 +74,24 @@ async function showPendingOrders(ctx) {
     }
 
     for (const order of pendingOrders) {
-      const productsText = order.products.map(p =>
-        `• ${p.product?.name || 'Produit'} - ${p.quantity}g x ${p.product?.price || 0}€`
+      const customer = order.Customer;
+      const productsText = order.OrderItems.map(item => 
+        `• ${item.Product?.name || 'Produit'} - ${item.quantity}g x ${item.unitPrice}€`
       ).join('\n');
 
       const message = `
 📦 *Commande #${order.id}*
-👤 Client: ${order.customerName} (${order.customerId})
-📞 Contact: ${order.contactInfo}
+👤 Client: ${customer.firstName} ${customer.lastName} (@${customer.username})
+📞 Contact: ${customer.telegramId}
 💳 Paiement: ${order.paymentMethod}
-💰 Total: ${order.total}€
+💰 Total: ${order.totalAmount}€
 ⏰ Date: ${order.createdAt.toLocaleString('fr-FR')}
 
 📋 Produits:
 ${productsText}
 
 📍 Adresse:
-${order.address}
+${order.deliveryAddress}
       `.trim();
 
       await ctx.reply(message, {
@@ -104,7 +116,10 @@ ${order.address}
 // Gestion des actions admin sur les commandes
 async function handleOrderAction(ctx, orderId, action) {
   try {
-    const order = await Order.findByPk(orderId);
+    const order = await Order.findByPk(orderId, {
+      include: [Customer]
+    });
+    
     if (!order) {
       return ctx.answerCbQuery('❌ Commande non trouvée');
     }
@@ -133,17 +148,9 @@ async function handleOrderAction(ctx, orderId, action) {
 
     // Notifier le client si nécessaire
     if (action === 'process' || action === 'contact') {
-      try {
-        await ctx.telegram.sendMessage(
-          order.customerId,
-          `📦 *Mise à jour de votre commande #${order.id}*\n\n` +
-          `✅ Votre commande a été traitée et sera expédiée prochainement.\n\n` +
-          `Merci pour votre confiance ! 🌿`,
-          { parse_mode: 'Markdown' }
-        );
-      } catch (error) {
-        console.error('❌ Erreur notification client:', error);
-      }
+      await notificationService.notifyOrderUpdate(ctx, order, order.Customer.telegramId, 'confirmed');
+    } else if (action === 'cancel') {
+      await notificationService.notifyOrderUpdate(ctx, order, order.Customer.telegramId, 'cancelled');
     }
 
   } catch (error) {
