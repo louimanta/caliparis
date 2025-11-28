@@ -73,36 +73,37 @@ async function handlePaymentMethod(ctx, method) {
 
     if (method === 'crypto') {
       paymentMessage = 
-        `💳 *Paiement Crypto*\n\n` +
+        `💳 *Commande Crypto Confirmée!* ✅\n\n` +
         `${orderDetails}\n` +
         `💶 *Total: ${total}€*\n\n` +
-        `📧 *Instructions de paiement:*\n` +
-        `1. Contactez @Caliplatesparis pour les détails de paiement\n` +
-        `2. Envoyez la preuve de transaction\n` +
-        `3. Livraison sous 24h-48h\n\n` +
-        `📍 Zone de livraison: Paris et banlieue`;
+        `📧 *Votre commande a été envoyée*\n` +
+        `• Nous vous contactons sous 24h\n` +
+        `• Pour les détails de paiement crypto\n` +
+        `• Livraison sous 24h-48h\n\n` +
+        `📍 Zone de livraison: Paris et banlieue\n\n` +
+        `🛒 Merci pour votre confiance!`;
 
       keyboard = [
-        [{ text: '📞 Contacter pour paiement', url: 'https://t.me/Caliplatesparis' }],
-        [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }],
-        [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
+        [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }],
+        [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
       ];
 
     } else if (method === 'cash') {
       paymentMessage = 
-        `💵 *Paiement Cash*\n\n` +
+        `💵 *Commande Cash Confirmée!* ✅\n\n` +
         `${orderDetails}\n` +
         `💶 *Total: ${total}€*\n\n` +
-        `📞 *Instructions de paiement:*\n` +
-        `1. Contactez @Caliplatesparis pour organiser la livraison\n` +
-        `2. Paiement en espèces à la livraison\n` +
-        `3. Livraison sous 24h-48h\n\n` +
-        `📍 Zone de livraison: Paris et banlieue`;
+        `📞 *Votre commande a été envoyée*\n` +
+        `• Nous vous contactons sous 24h\n` +
+        `• Pour organiser la livraison\n` +
+        `• Paiement en espèces à la livraison\n` +
+        `• Livraison sous 24h-48h\n\n` +
+        `📍 Zone de livraison: Paris et banlieue\n\n` +
+        `🛒 Merci pour votre confiance!`;
 
       keyboard = [
-        [{ text: '📞 Contacter pour livraison', url: 'https://t.me/Caliplatesparis' }],
-        [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }],
-        [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
+        [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }],
+        [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
       ];
     }
 
@@ -130,20 +131,15 @@ async function createOrder(ctx, paymentMethod, total) {
       userId: ctx.from.id,
       username: ctx.from.username || ctx.from.first_name,
       items: ctx.session.cart,
-      total: total,
+      totalAmount: total,
       paymentMethod: paymentMethod,
       status: 'pending'
     });
 
     console.log(`✅ Commande créée: ${order.id}`);
 
-    // Notifier les admins
-    await notificationService.notifyAdmins(
-      `🆕 Nouvelle commande #${order.id}\n` +
-      `Client: @${ctx.from.username || ctx.from.first_name}\n` +
-      `Total: ${total}€\n` +
-      `Paiement: ${paymentMethod}`
-    );
+    // NOTIFIER AUTOMATIQUEMENT avec tous les détails
+    await notifyNewOrder(order, ctx);
 
     // Vider le panier après commande
     ctx.session.cart = [];
@@ -154,6 +150,49 @@ async function createOrder(ctx, paymentMethod, total) {
   } catch (error) {
     console.error('❌ Erreur création commande:', error);
     throw error;
+  }
+}
+
+// FONCTION AMÉLIORÉE: Notification automatique détaillée
+async function notifyNewOrder(order, ctx) {
+  try {
+    const user = ctx.from;
+    const username = user.username ? `@${user.username}` : user.first_name;
+    const userId = user.id;
+    
+    // Formater les produits
+    let productsText = '';
+    order.items.forEach(item => {
+      const itemTotal = parseFloat(item.price) * item.quantity;
+      productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+    });
+
+    // Date formatée
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('fr-FR');
+    const timeStr = now.toLocaleTimeString('fr-FR');
+
+    const message = 
+      `🆕 *NOUVELLE COMMANDE #${order.id}* 🆕\n\n` +
+      `👤 *CLIENT:* ${username}\n` +
+      `🔢 *ID:* ${userId}\n` +
+      `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
+      `📦 *PRODUITS COMMANDÉS:*\n${productsText}\n` +
+      `💶 *TOTAL: ${order.totalAmount}€*\n` +
+      `💳 *MODE DE PAIEMENT:* ${order.paymentMethod}\n` +
+      `🕒 *DATE:* ${dateStr} ${timeStr}\n\n` +
+      `📍 *ZONE:* Paris et banlieue\n` +
+      `🚚 *LIVRAISON:* 24h-48h\n\n` +
+      `⚡ *ACTION RAPIDE:*\n` +
+      `📞 Contacter: tg://user?id=${userId}`;
+
+    // Envoyer la notification automatique à @caliparisofficial
+    await notificationService.notifyAdmins(message);
+
+    console.log(`📤 Notification commande #${order.id} envoyée automatiquement`);
+
+  } catch (error) {
+    console.error('❌ Erreur notification commande:', error);
   }
 }
 
@@ -169,25 +208,39 @@ async function handleDiscountRequest(ctx) {
       return;
     }
 
+    // Calculer le total
+    let total = 0;
+    let orderDetails = '';
+
+    for (const item of ctx.session.cart) {
+      const itemTotal = parseFloat(item.price) * item.quantity;
+      total += itemTotal;
+      orderDetails += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+    }
+
     const message = 
       `💎 *Demande de Remise - Commandes en Gros*\n\n` +
+      `${orderDetails}\n` +
+      `💶 *Total: ${total}€*\n\n` +
       `Votre commande totale: ${totalQuantity}g\n\n` +
-      `📞 Contactez @Caliplatesparis pour:\n` +
-      `• Obtenir un prix spécial\n` +
-      `• Discuter des conditions de livraison\n` +
-      `• Personnaliser votre commande\n\n` +
+      `📞 *Votre demande a été envoyée*\n` +
+      `• Nous vous contactons sous 24h\n` +
+      `• Pour discuter des remises spéciales\n` +
+      `• Et personnaliser votre commande\n\n` +
       `*Remises progressives selon la quantité!*`;
 
     await ctx.reply(message, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📞 Contacter pour remise', url: 'https://t.me/Caliplatesparis' }],
-          [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }],
-          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
+          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
+          [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
         ]
       }
     });
+
+    // Notifier aussi la demande de remise
+    await notifyDiscountRequest(ctx, totalQuantity, total);
 
     await ctx.answerCbQuery();
 
@@ -197,19 +250,49 @@ async function handleDiscountRequest(ctx) {
   }
 }
 
+// Notification pour les demandes de remise
+async function notifyDiscountRequest(ctx, totalQuantity, total) {
+  try {
+    const user = ctx.from;
+    const username = user.username ? `@${user.username}` : user.first_name;
+
+    let productsText = '';
+    ctx.session.cart.forEach(item => {
+      const itemTotal = parseFloat(item.price) * item.quantity;
+      productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+    });
+
+    const message = 
+      `💎 *DEMANDE DE REMISE - GROS* 💎\n\n` +
+      `👤 *CLIENT:* ${username} (${user.id})\n` +
+      `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
+      `📦 *PRODUITS:*\n${productsText}\n` +
+      `⚖️ *QUANTITÉ TOTALE:* ${totalQuantity}g\n` +
+      `💶 *TOTAL NORMAL:* ${total}€\n\n` +
+      `📍 *ACTION:* Contacter pour négocier remise\n` +
+      `📞 *LIEN:* tg://user?id=${user.id}`;
+
+    await notificationService.notifyAdmins(message);
+
+  } catch (error) {
+    console.error('❌ Erreur notification remise:', error);
+  }
+}
+
 async function confirmDiscountRequest(ctx) {
   try {
-    await ctx.answerCbQuery('📞 Redirection vers le support...');
+    await ctx.answerCbQuery('📞 Demande envoyée...');
 
     await ctx.reply(
-      `💎 *Contact Support CaliParis*\n\n` +
-      `Contactez @Caliplatesparis pour discuter de votre commande en gros et obtenir les meilleurs prix!`,
+      `💎 *Demande Envoyée!* ✅\n\n` +
+      `Votre demande de remise a été transmise.\n` +
+      `Nous vous contactons sous 24h pour discuter des meilleurs prix!`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📞 Contacter maintenant', url: 'https://t.me/Caliplatesparis' }],
-            [{ text: '🛒 Retour au panier', callback_data: 'back_to_cart' }]
+            [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
+            [{ text: '🏠 Menu principal', callback_data: 'back_to_menu' }]
           ]
         }
       }
