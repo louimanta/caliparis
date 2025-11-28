@@ -1,133 +1,101 @@
-const { Markup } = require('telegraf');
+// services/notificationService.js
+const { Telegraf } = require('telegraf');
 
 class NotificationService {
-  async notifyAdmin(order, bot) {
-    try {
-      const productsText = order.products.map(p =>
-        `• ${p.product?.name || 'Produit'} - ${p.quantity}g x ${p.product?.price || 0}€`
-      ).join('\n');
-
-      const totalGrams = order.products.reduce((sum, p) => sum + p.quantity, 0);
-
-      const message = `
-🆕 *NOUVELLE COMMANDE CaliParis* 🆕
-
-📦 Commande #${order.id}
-👤 Client: ${order.customerName} (${order.customerId})
-📞 Contact: ${order.contactInfo}
-💳 Paiement: ${order.paymentMethod}
-💰 Total: ${order.total}€
-📦 Grammes: ${totalGrams}g
-⏰ Date: ${order.createdAt.toLocaleString('fr-FR')}
-
-📋 Produits:
-${productsText}
-
-📍 Adresse:
-${order.address}
-      `.trim();
-
-      await bot.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback('✅ Traitée', `admin_process_${order.id}`),
-            Markup.button.callback('📞 Contacté', `admin_contact_${order.id}`)
-          ],
-          [
-            Markup.button.callback('🚫 Annuler', `admin_cancel_${order.id}`),
-            Markup.button.url('📞 Contacter', `tg://user?id=${order.customerId}`)
-          ]
-        ])
-      });
-
-      console.log(`✅ Notification admin envoyée pour commande #${order.id}`);
-    } catch (error) {
-      console.error('❌ Erreur notification admin:', error);
+    constructor() {
+        this.bot = new Telegraf(process.env.BOT_TOKEN);
     }
-  }
 
-  async notifyDiscountRequest(userId, cart, totalGrams, bot) {
-    try {
-      const productsText = cart.items.map(p =>
-        `• ${p.name} - ${p.quantity}g x ${p.unitPrice}€`
-      ).join('\n');
+    async notifyAdmins(message) {
+        try {
+            console.log('📤 Envoi notification aux admins...');
+            
+            const adminIds = process.env.ADMIN_IDS ? 
+                process.env.ADMIN_IDS.split(',').map(id => id.trim()) : 
+                ['8442884695']; // Votre ID par défaut
 
-      const message = `
-💎 *DEMANDE REMISE GROS* 💎
+            console.log(`👥 Admins à notifier: ${adminIds}`);
 
-👤 Client: ${userId}
-📦 Quantité totale: ${totalGrams}g
-💰 Total normal: ${cart.totalAmount}€
+            let notificationsSent = 0;
 
-📋 Produits:
-${productsText}
+            for (const adminId of adminIds) {
+                try {
+                    await this.bot.telegram.sendMessage(adminId, message, {
+                        parse_mode: 'Markdown'
+                    });
+                    console.log(`✅ Notification envoyée à l'admin: ${adminId}`);
+                    notificationsSent++;
+                    
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                } catch (error) {
+                    console.error(`❌ Erreur envoi admin ${adminId}:`, error.message);
+                }
+            }
 
-⚡ *CONTACTER RAPIDEMENT POUR OFFRE PERSONNALISÉE!*
-      `.trim();
+            console.log(`📊 Notifications envoyées: ${notificationsSent}/${adminIds.length}`);
+            return notificationsSent > 0;
 
-      await bot.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.url('📞 Contacter maintenant', `tg://user?id=${userId}`)]
-        ])
-      });
-
-      console.log(`✅ Notification remise envoyée pour client ${userId}`);
-    } catch (error) {
-      console.error('❌ Erreur notification remise:', error);
+        } catch (error) {
+            console.error('❌ Erreur générale notification:', error);
+            return false;
+        }
     }
-  }
 
-  async notifyLowStock(product, bot) {
-    try {
-      const message = `
-⚠️ *STOCK FAIBLE* ⚠️
+    // Méthode pour formater les messages de commande
+    formatOrderMessage(order, user, cartItems) {
+        const username = user.username ? `@${user.username}` : user.first_name;
+        const userId = user.id;
+        
+        let productsText = '';
+        if (cartItems && cartItems.length > 0) {
+            cartItems.forEach(item => {
+                const itemTotal = parseFloat(item.price) * item.quantity;
+                productsText += `• ${item.name} - ${item.quantity}x - ${itemTotal}€\n`;
+            });
+        } else {
+            productsText = '• Aucun produit trouvé\n';
+        }
 
-🛍️ Produit: ${product.name}
-📦 Stock actuel: ${product.stock}g
-💰 Prix: ${product.price}€
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('fr-FR');
+        const timeStr = now.toLocaleTimeString('fr-FR');
 
-Il est temps de réapprovisionner!
-      `.trim();
-
-      await bot.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
-        parse_mode: 'Markdown'
-      });
-
-      console.log(`✅ Notification stock faible pour ${product.name}`);
-    } catch (error) {
-      console.error('❌ Erreur notification stock faible:', error);
+        return `🆕 *NOUVELLE COMMANDE #${order.id}* 🆕\n\n` +
+            `👤 *CLIENT:* ${username}\n` +
+            `🔢 *ID:* ${userId}\n` +
+            `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
+            `📦 *PRODUITS COMMANDÉS:*\n${productsText}\n` +
+            `💶 *TOTAL: ${order.totalAmount}€*\n` +
+            `💳 *MODE DE PAIEMENT:* ${order.paymentMethod}\n` +
+            `🕒 *DATE:* ${dateStr} ${timeStr}\n\n` +
+            `📍 *ZONE:* Paris et banlieue\n` +
+            `🚚 *LIVRAISON:* 2h-4h\n\n` +
+            `⚡ *ACTION RAPIDE:*\n` +
+            `📞 Contacter: tg://user?id=${userId}`;
     }
-  }
 
-  async notifyOrderUpdate(order, updateType, bot) {
-    try {
-      let message = '';
+    // Méthode pour formater les demandes de remise
+    formatDiscountMessage(user, cartItems, totalQuantity, total) {
+        const username = user.username ? `@${user.username}` : user.first_name;
+        
+        let productsText = '';
+        if (cartItems && cartItems.length > 0) {
+            cartItems.forEach(item => {
+                const itemTotal = parseFloat(item.price) * item.quantity;
+                productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+            });
+        }
 
-      switch (updateType) {
-        case 'confirmed':
-          message = `✅ Votre commande #${order.id} a été confirmée et sera expédiée prochainement.`;
-          break;
-        case 'shipped':
-          message = `🚚 Votre commande #${order.id} a été expédiée. Livraison imminente!`;
-          break;
-        case 'cancelled':
-          message = `❌ Votre commande #${order.id} a été annulée. Contactez-nous pour plus d'informations.`;
-          break;
-        default:
-          return;
-      }
-
-      await bot.telegram.sendMessage(order.customerId, message, {
-        parse_mode: 'Markdown'
-      });
-
-      console.log(`✅ Notification mise à jour envoyée pour commande #${order.id}`);
-    } catch (error) {
-      console.error('❌ Erreur notification mise à jour:', error);
+        return `💎 *DEMANDE DE REMISE - GROS* 💎\n\n` +
+            `👤 *CLIENT:* ${username} (${user.id})\n` +
+            `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
+            `📦 *PRODUITS:*\n${productsText}\n` +
+            `⚖️ *QUANTITÉ TOTALE:* ${totalQuantity}g\n` +
+            `💶 *TOTAL NORMAL:* ${total}€\n\n` +
+            `📍 *ACTION:* Contacter pour négocier remise\n` +
+            `📞 *LIEN:* tg://user?id=${user.id}`;
     }
-  }
 }
 
 module.exports = new NotificationService();
