@@ -1,4 +1,18 @@
 require('dotenv').config();
+console.log('🚀 Démarrage de CaliParis Bot...');
+console.log('✅ BOT_TOKEN:', process.env.BOT_TOKEN ? 'Configuré' : 'Manquant');
+console.log('✅ DATABASE_URL:', process.env.DATABASE_URL ? 'Configuré' : 'Manquant');
+console.log('✅ NODE_ENV:', process.env.NODE_ENV);
+
+const express = require('express');
+const bot = require('./bot');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ... le reste de votre code server.js
+
+require('dotenv').config();
 const express = require('express');
 const bot = require('./bot');
 const { syncDatabase } = require('./models');
@@ -76,3 +90,4 @@ async function startApplication() {
 startApplication();
 
 module.exports = app;
+
