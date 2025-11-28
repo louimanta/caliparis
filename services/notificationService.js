@@ -3,11 +3,21 @@ const { Telegraf } = require('telegraf');
 
 class NotificationService {
     constructor() {
-        this.bot = new Telegraf(process.env.BOT_TOKEN);
+        this.bot = null;
+    }
+
+    // Méthode pour initialiser avec le bot principal
+    setBot(botInstance) {
+        this.bot = botInstance;
     }
 
     async notifyAdmins(message) {
         try {
+            if (!this.bot) {
+                console.error('❌ Bot non initialisé dans le service de notification');
+                return false;
+            }
+
             console.log('📤 Envoi notification aux admins...');
             
             const adminIds = process.env.ADMIN_IDS ? 
@@ -26,7 +36,6 @@ class NotificationService {
                     console.log(`✅ Notification envoyée à l'admin: ${adminId}`);
                     notificationsSent++;
                     
-                    // Petite pause entre les envois
                     await new Promise(resolve => setTimeout(resolve, 500));
                     
                 } catch (error) {
@@ -99,4 +108,7 @@ class NotificationService {
     }
 }
 
-module.exports = new NotificationService();
+// Créer une instance unique
+const notificationService = new NotificationService();
+
+module.exports = notificationService;
