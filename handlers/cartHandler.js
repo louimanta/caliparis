@@ -159,8 +159,8 @@ async function showCart(ctx) {
     const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     console.log(`🛍️ Panier trouvé:`, cart ? 'OUI' : 'NON');
     
-    if (!cart || cart.items.length === 0) {
-      console.log('🛒 Panier vide');
+    if (!cart) {
+      console.log('❌ Aucun panier trouvé');
       return ctx.reply(
         '🛒 Votre panier est vide\n\n' +
         '📦 Parcourez notre catalogue pour ajouter des produits!',
@@ -174,12 +174,36 @@ async function showCart(ctx) {
       );
     }
 
-    console.log(`📋 Items dans panier:`, cart.items.length);
+    console.log(`📋 Items dans panier (RAW):`, cart.items);
+    console.log(`📋 Type de items:`, typeof cart.items);
+    console.log(`📋 Longueur de items:`, Array.isArray(cart.items) ? cart.items.length : 'NON-ARRAY');
+    
+    // FORCER la conversion en array si nécessaire
+    const items = Array.isArray(cart.items) ? cart.items : JSON.parse(cart.items || '[]');
+    console.log(`📋 Items convertis:`, items);
+    console.log(`📋 Nombre d'items convertis:`, items.length);
+    
+    if (!items || items.length === 0) {
+      console.log('🛒 Panier vide après conversion');
+      return ctx.reply(
+        '🛒 Votre panier est vide\n\n' +
+        '📦 Parcourez notre catalogue pour ajouter des produits!',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }]
+            ]
+          }
+        }
+      );
+    }
+
+    console.log(`📋 Items valides:`, items.length);
     
     let message = '🛒 *Votre Panier*\n\n';
     let totalAmount = 0;
 
-    for (const item of cart.items) {
+    for (const item of items) {
       console.log(`🔍 Récupération produit: ${item.productId}`);
       const product = await safeDbOperation(() => Product.findByPk(item.productId));
       if (product) {
@@ -190,7 +214,7 @@ async function showCart(ctx) {
         console.log(`✅ Produit affiché: ${product.name}`);
       } else {
         console.log(`❌ Produit non trouvé: ${item.productId}`);
-        message += `🌿 Produit #${item.productId} (non trouvé)\n`;
+        message += `🌿 ${item.name || `Produit #${item.productId}`}\n`;
         message += `   📦 Quantité: ${item.quantity}g\n`;
         message += `   💰 Prix: ${item.totalPrice}€\n\n`;
         totalAmount += item.totalPrice;
@@ -200,7 +224,7 @@ async function showCart(ctx) {
     message += `💵 *Total: ${totalAmount}€*`;
 
     // Appliquer remise automatique pour grosses quantités
-    const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
     console.log(`📊 Quantité totale: ${totalQuantity}g`);
 
     if (totalQuantity >= 30) {
