@@ -1,114 +1,133 @@
-// services/notificationService.js
-const { Telegraf } = require('telegraf');
+const { Markup } = require('telegraf');
 
 class NotificationService {
-    constructor() {
-        this.bot = null;
+  async notifyAdmin(ctx, order, customer, cart) {
+    try {
+      const productsText = cart.items.map(item => 
+        `• ${item.name} - ${item.quantity}g x ${item.unitPrice}€`
+      ).join('\n');
+
+      const totalGrams = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+
+      const message = `
+🆕 *NOUVELLE COMMANDE CaliParis* 🆕
+
+📦 Commande #${order.id}
+👤 Client: ${customer.firstName} ${customer.lastName} (@${customer.username})
+📞 Telegram: ${customer.telegramId}
+💳 Paiement: ${order.paymentMethod}
+💰 Total: ${order.totalAmount}€
+📦 Grammes: ${totalGrams}g
+⏰ Date: ${order.createdAt.toLocaleString('fr-FR')}
+
+📋 Produits:
+${productsText}
+
+📍 Adresse:
+${order.deliveryAddress}
+      `.trim();
+
+      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('✅ Traitée', `admin_process_${order.id}`),
+            Markup.button.callback('📞 Contacté', `admin_contact_${order.id}`)
+          ],
+          [
+            Markup.button.callback('🚫 Annuler', `admin_cancel_${order.id}`),
+            Markup.button.url('📞 Contacter', `tg://user?id=${customer.telegramId}`)
+          ]
+        ])
+      });
+
+      console.log(`✅ Notification admin envoyée pour commande #${order.id}`);
+    } catch (error) {
+      console.error('❌ Erreur notification admin:', error);
     }
+  }
 
-    // Méthode pour initialiser avec le bot principal
-    setBot(botInstance) {
-        this.bot = botInstance;
+  async notifyDiscountRequest(ctx, userId, cart, totalGrams) {
+    try {
+      const productsText = cart.items.map(item => 
+        `• ${item.name} - ${item.quantity}g x ${item.unitPrice}€`
+      ).join('\n');
+
+      const message = `
+💎 *DEMANDE REMISE GROS* 💎
+
+👤 Client: ${userId}
+📦 Quantité totale: ${totalGrams}g
+💰 Total normal: ${cart.totalAmount}€
+
+📋 Produits:
+${productsText}
+
+⚡ *CONTACTER RAPIDEMENT POUR OFFRE PERSONNALISÉE!*
+      `.trim();
+
+      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('📞 Contacter maintenant', `tg://user?id=${userId}`)]
+        ])
+      });
+
+      console.log(`✅ Notification remise envoyée pour client ${userId}`);
+    } catch (error) {
+      console.error('❌ Erreur notification remise:', error);
     }
+  }
 
-    async notifyAdmins(message) {
-        try {
-            if (!this.bot) {
-                console.error('❌ Bot non initialisé dans le service de notification');
-                return false;
-            }
+  async notifyLowStock(ctx, product) {
+    try {
+      const message = `
+⚠️ *STOCK FAIBLE* ⚠️
 
-            console.log('📤 Envoi notification aux admins...');
-            
-            const adminIds = process.env.ADMIN_IDS ? 
-                process.env.ADMIN_IDS.split(',').map(id => id.trim()) : 
-                ['7965350707', '8442884695'];
+🛍️ Produit: ${product.name}
+📦 Stock actuel: ${product.stock}g
+💰 Prix: ${product.price}€
 
-            console.log(`👥 Admins à notifier: ${adminIds}`);
+Il est temps de réapprovisionner!
+      `.trim();
 
-            let notificationsSent = 0;
+      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
+        parse_mode: 'Markdown'
+      });
 
-            for (const adminId of adminIds) {
-                try {
-                    await this.bot.telegram.sendMessage(adminId, message, {
-                        parse_mode: 'Markdown'
-                    });
-                    console.log(`✅ Notification envoyée à l'admin: ${adminId}`);
-                    notificationsSent++;
-                    
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                } catch (error) {
-                    console.error(`❌ Erreur envoi admin ${adminId}:`, error.message);
-                }
-            }
-
-            console.log(`📊 Notifications envoyées: ${notificationsSent}/${adminIds.length}`);
-            return notificationsSent > 0;
-
-        } catch (error) {
-            console.error('❌ Erreur générale notification:', error);
-            return false;
-        }
+      console.log(`✅ Notification stock faible pour ${product.name}`);
+    } catch (error) {
+      console.error('❌ Erreur notification stock faible:', error);
     }
+  }
 
-    // Méthode pour formater les messages de commande
-    formatOrderMessage(order, user, cartItems) {
-        const username = user.username ? `@${user.username}` : user.first_name;
-        const userId = user.id;
-        
-        let productsText = '';
-        if (cartItems && cartItems.length > 0) {
-            cartItems.forEach(item => {
-                const itemTotal = parseFloat(item.price) * item.quantity;
-                productsText += `• ${item.name} - ${item.quantity}x - ${itemTotal}€\n`;
-            });
-        } else {
-            productsText = '• Aucun produit trouvé\n';
-        }
+  async notifyOrderUpdate(ctx, order, customerId, updateType) {
+    try {
+      let message = '';
 
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('fr-FR');
-        const timeStr = now.toLocaleTimeString('fr-FR');
+      switch (updateType) {
+        case 'confirmed':
+          message = `✅ Votre commande #${order.id} a été confirmée et sera expédiée prochainement.`;
+          break;
+        case 'shipped':
+          message = `🚚 Votre commande #${order.id} a été expédiée. Livraison imminente!`;
+          break;
+        case 'cancelled':
+          message = `❌ Votre commande #${order.id} a été annulée. Contactez-nous pour plus d'informations.`;
+          break;
+        default:
+          return;
+      }
 
-        return `🆕 *NOUVELLE COMMANDE #${order.id}* 🆕\n\n` +
-            `👤 *CLIENT:* ${username}\n` +
-            `🔢 *ID:* ${userId}\n` +
-            `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
-            `📦 *PRODUITS COMMANDÉS:*\n${productsText}\n` +
-            `💶 *TOTAL: ${order.totalAmount}€*\n` +
-            `💳 *MODE DE PAIEMENT:* ${order.paymentMethod}\n` +
-            `🕒 *DATE:* ${dateStr} ${timeStr}\n\n` +
-            `📍 *ZONE:* Paris et banlieue\n` +
-            `🚚 *LIVRAISON:* 2h-4h\n\n` +
-            `⚡ *ACTION RAPIDE:*\n` +
-            `📞 Contacter: tg://user?id=${userId}`;
+      await ctx.telegram.sendMessage(customerId, message, {
+        parse_mode: 'Markdown'
+      });
+
+      console.log(`✅ Notification mise à jour envoyée pour commande #${order.id}`);
+    } catch (error) {
+      console.error('❌ Erreur notification mise à jour:', error);
     }
-
-    // Méthode pour formater les demandes de remise
-    formatDiscountMessage(user, cartItems, totalQuantity, total) {
-        const username = user.username ? `@${user.username}` : user.first_name;
-        
-        let productsText = '';
-        if (cartItems && cartItems.length > 0) {
-            cartItems.forEach(item => {
-                const itemTotal = parseFloat(item.price) * item.quantity;
-                productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-            });
-        }
-
-        return `💎 *DEMANDE DE REMISE - GROS* 💎\n\n` +
-            `👤 *CLIENT:* ${username} (${user.id})\n` +
-            `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
-            `📦 *PRODUITS:*\n${productsText}\n` +
-            `⚖️ *QUANTITÉ TOTALE:* ${totalQuantity}g\n` +
-            `💶 *TOTAL NORMAL:* ${total}€\n\n` +
-            `📍 *ACTION:* Contacter pour négocier remise\n` +
-            `📞 *LIEN:* tg://user?id=${user.id}`;
-    }
+  }
 }
 
-// Créer une instance unique
-const notificationService = new NotificationService();
-
-module.exports = notificationService;
+module.exports = new NotificationService();
