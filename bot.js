@@ -1,7 +1,5 @@
-
-
 require('dotenv').config();
-const { Telegraf, session, Scenes: { Stage } } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const { sequelize } = require('./models');
 
 // Import des handlers
@@ -17,7 +15,6 @@ const { checkCartNotEmpty, validateQuantity, updateCartTimestamp } = require('./
 
 // Import des services
 const cartService = require('./services/cartService');
-const notificationService = require('./services/notificationService');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -353,7 +350,7 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000);
 
-// Démarrage du bot avec MEILLEURE GESTION D'ERREURS
+// Démarrage du bot avec CONFIGURATION WEBHOOK/PRODUCTION
 async function startBot() {
   try {
     await sequelize.authenticate();
@@ -370,8 +367,19 @@ async function startBot() {
       require('./scripts/initializeProducts')();
     }
     
-    await bot.launch();
-    console.log('🤖 Bot CaliParis démarré!');
+    // CONFIGURATION PRODUCTION/WEBHOOK
+    if (process.env.NODE_ENV === 'production') {
+      console.log('🌐 Mode: Production (Webhook)');
+      
+      // Le webhook est configuré dans server.js
+      console.log('🤖 Bot prêt pour les webhooks');
+      
+    } else {
+      // Mode développement - Polling
+      console.log('🔧 Mode: Développement (Polling)');
+      await bot.launch();
+      console.log('🤖 Bot CaliParis démarré en mode polling!');
+    }
     
   } catch (error) {
     console.error('❌ Erreur démarrage bot:', error);
@@ -379,19 +387,5 @@ async function startBot() {
   }
 }
 
-startBot();
-
-// Gestion propre de l'arrêt
-process.once('SIGINT', () => {
-  console.log('🛑 Arrêt du bot (SIGINT)...');
-  bot.stop('SIGINT');
-  process.exit(0);
-});
-
-process.once('SIGTERM', () => {
-  console.log('🛑 Arrêt du bot (SIGTERM)...');
-  bot.stop('SIGTERM');
-  process.exit(0);
-});
-
-module.exports = bot;
+// Export pour utilisation dans server.js
+module.exports = { bot, startBot };
