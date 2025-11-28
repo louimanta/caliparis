@@ -76,13 +76,15 @@ async function handleAddToCart(ctx, productId, quantity) {
     console.log(`💾 Mise à jour panier...`);
     console.log(`📦 Items à sauvegarder:`, currentItems);
     
-    // ✅ CORRECTION : Utiliser UPDATE au lieu de SAVE
-    const updated = await safeDbOperation(() => cart.update({
+    // ✅ SOLUTION FINALE : Utiliser Cart.update() avec where pour contourner le bug Sequelize
+    const updated = await safeDbOperation(() => Cart.update({
       items: currentItems,
       totalAmount: currentItems.reduce((sum, item) => sum + item.totalPrice, 0),
       lastActivity: new Date()
+    }, {
+      where: { id: cart.id }
     }));
-    console.log(`✅ Panier mis à jour:`, updated ? 'OUI' : 'NON');
+    console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
     await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier!`);
@@ -274,9 +276,16 @@ async function clearCart(ctx) {
     const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     if (cart) {
       console.log(`📋 Items avant vidage:`, cart.items.length);
-      cart.items = [];
-      cart.totalAmount = 0;
-      await safeDbOperation(() => cart.save());
+      
+      // ✅ Utiliser aussi Cart.update() pour le vidage
+      await safeDbOperation(() => Cart.update({
+        items: [],
+        totalAmount: 0,
+        lastActivity: new Date()
+      }, {
+        where: { id: cart.id }
+      }));
+      
       console.log('✅ Panier vidé');
     } else {
       console.log('ℹ️ Aucun panier à vider');
