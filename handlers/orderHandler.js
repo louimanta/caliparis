@@ -49,11 +49,19 @@ ${cart.items.map(item => `• ${item.quantity}g - ${item.name}`).join('\n')}
 
 async function handlePaymentMethod(ctx, method) {
   try {
+    console.log(`💳 DEBUT handlePaymentMethod - User: ${ctx.from.id}, Méthode: ${method}`);
+    
     const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
     
     if (!cart || cart.items.length === 0) {
       return ctx.answerCbQuery('❌ Votre panier est vide');
     }
+
+    console.log(`📦 Panier trouvé - Total: ${cart.totalAmount}€, Items:`, cart.items);
+
+    // ✅ SAUVEGARDER le totalAmount AVANT de vider le panier
+    const totalAmount = cart.totalAmount;
+    const cartItems = [...cart.items]; // Copie des items
 
     // Trouver ou créer le client
     let customer = await Customer.findOne({ where: { telegramId: ctx.from.id } });
@@ -64,19 +72,22 @@ async function handlePaymentMethod(ctx, method) {
         firstName: ctx.from.first_name,
         lastName: ctx.from.last_name
       });
+      console.log(`👤 Nouveau client créé: ${customer.id}`);
     }
 
     // Créer la commande
     const order = await Order.create({
       customerId: customer.id,
-      totalAmount: cart.totalAmount,
+      totalAmount: totalAmount, // ✅ Utiliser la valeur sauvegardée
       paymentMethod: method,
       status: 'pending',
       deliveryAddress: customer.deliveryAddress || 'À confirmer'
     });
 
+    console.log(`📋 Commande créée: #${order.id}, Montant: ${totalAmount}€`);
+
     // Créer les order items
-    for (const item of cart.items) {
+    for (const item of cartItems) {
       await OrderItem.create({
         orderId: order.id,
         productId: item.productId,
@@ -90,13 +101,19 @@ async function handlePaymentMethod(ctx, method) {
       if (product) {
         product.stock -= item.quantity;
         await product.save();
+        console.log(`📦 Stock mis à jour: ${product.name} -${item.quantity}g`);
       }
     }
 
-    // Vider le panier
-    cart.items = [];
-    cart.totalAmount = 0;
-    await cart.save();
+    // ✅ Vider le panier APRÈS avoir utilisé les données
+    await Cart.update({
+      items: [],
+      totalAmount: 0,
+      lastActivity: new Date()
+    }, {
+      where: { id: cart.id }
+    });
+    console.log(`🛒 Panier vidé`);
 
     let paymentMessage = '';
     
@@ -105,7 +122,7 @@ async function handlePaymentMethod(ctx, method) {
 ✅ *Commande #${order.id} créée!*
 
 💳 *Paiement Crypto:*
-• Envoyez ${cart.totalAmount}€ en BTC ou ETH
+• Envoyez ${totalAmount}€ en BTC ou ETH
 • Adresse: **1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa**
 • Contactez-nous après paiement
 
@@ -121,7 +138,7 @@ async function handlePaymentMethod(ctx, method) {
 
 💵 *Paiement Cash:*
 • Paiement à la livraison
-• Préparer le montant exact: ${cart.totalAmount}€
+• Préparer le montant exact: ${totalAmount}€
 
 📦 *Livraison:*
 • Sous 24-48h dans Paris
@@ -135,12 +152,13 @@ async function handlePaymentMethod(ctx, method) {
     await ctx.reply(paymentMessage, { parse_mode: 'Markdown' });
 
     // Notification admin via le service
-    await notificationService.notifyAdmin(ctx, order, customer, cart);
+    await notificationService.notifyAdmin(ctx, order, customer, { items: cartItems, totalAmount });
 
     await ctx.answerCbQuery('✅ Commande créée!');
+    console.log(`🎉 handlePaymentMethod TERMINÉ - Commande #${order.id}`);
     
   } catch (error) {
-    console.error('Erreur création commande:', error);
+    console.error('💥 ERREUR création commande:', error);
     await ctx.answerCbQuery('❌ Erreur création commande');
   }
 }
