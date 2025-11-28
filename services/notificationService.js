@@ -12,7 +12,7 @@ class NotificationService {
             
             const adminIds = process.env.ADMIN_IDS ? 
                 process.env.ADMIN_IDS.split(',').map(id => id.trim()) : 
-                ['8442884695']; // Votre ID par défaut
+                ['7965350707', '8442884695'];
 
             console.log(`👥 Admins à notifier: ${adminIds}`);
 
@@ -26,6 +26,7 @@ class NotificationService {
                     console.log(`✅ Notification envoyée à l'admin: ${adminId}`);
                     notificationsSent++;
                     
+                    // Petite pause entre les envois
                     await new Promise(resolve => setTimeout(resolve, 500));
                     
                 } catch (error) {
