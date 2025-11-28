@@ -5,8 +5,9 @@ async function showProducts(ctx) {
   try {
     console.log(`📦 showProducts - User: ${ctx.from.id}`);
     
+    // CORRECTION: Utiliser isActive au lieu de available
     const products = await Product.findAll({
-      where: { available: true }
+      where: { isActive: true }
     });
 
     if (products.length === 0) {
