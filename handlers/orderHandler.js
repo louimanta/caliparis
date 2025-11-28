@@ -130,7 +130,7 @@ async function createOrder(ctx, paymentMethod, total) {
     const order = await Order.create({
       userId: ctx.from.id,
       username: ctx.from.username || ctx.from.first_name,
-      items: ctx.session.cart, // CORRECTION: Utiliser directement ctx.session.cart
+      items: ctx.session.cart,
       totalAmount: total,
       paymentMethod: paymentMethod,
       status: 'pending'
@@ -139,7 +139,7 @@ async function createOrder(ctx, paymentMethod, total) {
     console.log(`✅ Commande créée: ${order.id}`);
 
     // NOTIFIER AUTOMATIQUEMENT avec tous les détails
-    await notifyNewOrder(order, ctx, ctx.session.cart); // CORRECTION: Passer le panier en paramètre
+    await notifyNewOrder(order, ctx);
 
     // Vider le panier après commande
     ctx.session.cart = [];
@@ -154,43 +154,11 @@ async function createOrder(ctx, paymentMethod, total) {
 }
 
 // FONCTION CORRIGÉE: Notification automatique détaillée
-async function notifyNewOrder(order, ctx, cartItems) { // CORRECTION: Ajouter cartItems en paramètre
+async function notifyNewOrder(order, ctx) {
   try {
-    const user = ctx.from;
-    const username = user.username ? `@${user.username}` : user.first_name;
-    const userId = user.id;
+    const message = notificationService.formatOrderMessage(order, ctx.from, ctx.session.cart);
     
-    // CORRECTION: Utiliser cartItems au lieu de order.items
-    let productsText = '';
-    if (cartItems && cartItems.length > 0) {
-      cartItems.forEach(item => {
-        const itemTotal = parseFloat(item.price) * item.quantity;
-        productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-      });
-    } else {
-      productsText = '• Aucun produit trouvé\n';
-    }
-
-    // Date formatée
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('fr-FR');
-    const timeStr = now.toLocaleTimeString('fr-FR');
-
-    const message = 
-      `🆕 *NOUVELLE COMMANDE #${order.id}* 🆕\n\n` +
-      `👤 *CLIENT:* ${username}\n` +
-      `🔢 *ID:* ${userId}\n` +
-      `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
-      `📦 *PRODUITS COMMANDÉS:*\n${productsText}\n` +
-      `💶 *TOTAL: ${order.totalAmount}€*\n` +
-      `💳 *MODE DE PAIEMENT:* ${order.paymentMethod}\n` +
-      `🕒 *DATE:* ${dateStr} ${timeStr}\n\n` +
-      `📍 *ZONE:* Paris et banlieue\n` +
-      `🚚 *LIVRAISON:* 2h-4h\n\n` +
-      `⚡ *ACTION RAPIDE:*\n` +
-      `📞 Contacter: tg://user?id=${userId}`;
-
-    // Envoyer la notification automatique à @caliparisofficial
+    // Envoyer la notification automatique aux admins
     await notificationService.notifyAdmins(message);
 
     console.log(`📤 Notification commande #${order.id} envoyée automatiquement`);
@@ -257,28 +225,15 @@ async function handleDiscountRequest(ctx) {
 // Notification pour les demandes de remise
 async function notifyDiscountRequest(ctx, totalQuantity, total) {
   try {
-    const user = ctx.from;
-    const username = user.username ? `@${user.username}` : user.first_name;
-
-    let productsText = '';
-    if (ctx.session.cart && ctx.session.cart.length > 0) {
-      ctx.session.cart.forEach(item => {
-        const itemTotal = parseFloat(item.price) * item.quantity;
-        productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-      });
-    }
-
-    const message = 
-      `💎 *DEMANDE DE REMISE - GROS* 💎\n\n` +
-      `👤 *CLIENT:* ${username} (${user.id})\n` +
-      `📞 *CONTACT:* https://t.me/${user.username || user.id}\n\n` +
-      `📦 *PRODUITS:*\n${productsText}\n` +
-      `⚖️ *QUANTITÉ TOTALE:* ${totalQuantity}g\n` +
-      `💶 *TOTAL NORMAL:* ${total}€\n\n` +
-      `📍 *ACTION:* Contacter pour négocier remise\n` +
-      `📞 *LIEN:* tg://user?id=${user.id}`;
+    const message = notificationService.formatDiscountMessage(
+      ctx.from, 
+      ctx.session.cart, 
+      totalQuantity, 
+      total
+    );
 
     await notificationService.notifyAdmins(message);
+    console.log(`📤 Notification remise envoyée pour ${totalQuantity}g`);
 
   } catch (error) {
     console.error('❌ Erreur notification remise:', error);
