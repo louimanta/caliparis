@@ -1,142 +1,134 @@
-// handlers/productHandler.js
+const { Markup } = require('telegraf');
 const { Product } = require('../models');
+const { Op } = require('sequelize');
+const { safeDbOperation } = require('./cartHandler');
 
 async function showProducts(ctx) {
   try {
-    console.log(`📦 showProducts - User: ${ctx.from.id}`);
-    
-    // CORRECTION: Utiliser isActive au lieu de available
-    const products = await Product.findAll({
-      where: { isActive: true }
-    });
+    const products = await safeDbOperation(() => Product.findAll({ 
+      where: { 
+        isActive: true, 
+        stock: { [Op.gt]: 0 }
+      },
+      order: [['name', 'ASC']]
+    }), []);
 
-    if (products.length === 0) {
-      await ctx.reply(
-        '❌ Aucun produit disponible pour le moment.\n\nRevenez plus tard!',
-        { parse_mode: 'Markdown' }
-      );
-      return;
+    if (!products || products.length === 0) {
+      return ctx.reply('📦 Aucun produit disponible pour le moment.');
     }
 
-    let productsText = '📦 *CATALOGUE CALIPARIS*\n\n';
-    productsText += '🌟 *Qualité Premium Garantie*\n\n';
-    productsText += 'Choisissez votre produit:\n\n';
+    // Message d'introduction
+    await ctx.reply('🎬 *Découvrez notre catalogue premium* 🌿\n\n_Sélectionnez vos produits préférés :_', {
+      parse_mode: 'Markdown'
+    });
 
-    const keyboard = [];
+    // Afficher chaque produit
+    for (const product of products) {
+      const message = `
+🛍️ *${product.name}*
+💰 ${product.price}€/g
+📝 ${product.description}
+📦 Stock: ${product.stock}g disponible(s)
 
-    products.forEach(product => {
-      productsText += `*${product.name}*\n`;
-      productsText += `💶 ${product.price}€/g\n`;
-      productsText += `📝 ${product.description}\n\n`;
+_Choisissez la quantité :_
+      `.trim();
 
-      keyboard.push([
-        { 
-          text: `🛍️ ${product.name} - ${product.price}€/g`, 
-          callback_data: `details_${product.id}`
-        }
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback('➕ 1g', `add_1_${product.id}`),
+          Markup.button.callback('➕ 3g', `add_3_${product.id}`),
+          Markup.button.callback('➕ 5g', `add_5_${product.id}`)
+        ],
+        [
+          Markup.button.callback('➕ 10g', `add_10_${product.id}`),
+          Markup.button.callback('➕ 20g', `add_20_${product.id}`),
+          Markup.button.callback('⚡ Autre', `custom_${product.id}`)
+        ],
+        [
+          Markup.button.callback('🎬 Vidéo', `video_${product.id}`),
+          Markup.button.callback('📊 Détails', `details_${product.id}`)
+        ]
       ]);
-    });
 
-    keyboard.push([
-      { text: '🛒 Voir mon panier', callback_data: 'view_cart' },
-      { text: '🏠 Menu principal', callback_data: 'back_to_menu' }
-    ]);
-
-    await ctx.reply(productsText, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: keyboard
+      if (product.imageUrl) {
+        await ctx.replyWithPhoto(product.imageUrl, {
+          caption: message,
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+      } else {
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
       }
-    });
 
-  } catch (error) {
-    console.error('❌ Erreur dans showProducts:', error);
-    await ctx.reply('❌ Erreur lors du chargement des produits');
-  }
-}
-
-async function showProductDetails(ctx, productId) {
-  try {
-    console.log(`📋 showProductDetails - User: ${ctx.from.id}, Product: ${productId}`);
-    
-    const product = await Product.findByPk(productId);
-    
-    if (!product) {
-      await ctx.answerCbQuery('❌ Produit non trouvé');
-      return;
+      // Petite pause entre les produits
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    let productText = `*${product.name}*\n\n`;
-    productText += `📝 *Description:* ${product.description}\n`;
-    productText += `💶 *Prix:* ${product.price}€/g\n`;
-    productText += `⭐ *Qualité:* ${product.quality || 'Premium'}\n\n`;
-    productText += `📍 *Livraison:* Paris et banlieue\n`;
-    productText += `🚚 *Délai:* 2h-4h\n\n`;
-    productText += `Choisissez la quantité:`;
-
-    const keyboard = [
-      [
-        { text: '➕ 1g', callback_data: `add_1_${product.id}` },
-        { text: '➕ 3g', callback_data: `add_3_${product.id}` },
-        { text: '➕ 5g', callback_data: `add_5_${product.id}` }
-      ],
-      [
-        { text: '🔢 Quantité personnalisée', callback_data: `custom_${product.id}` }
-      ],
-      [
-        { text: '🎬 Voir la vidéo', callback_data: `video_${product.id}` }
-      ],
-      [
-        { text: '📦 Retour au catalogue', callback_data: 'back_to_products' },
-        { text: '🛒 Voir panier', callback_data: 'view_cart' }
-      ]
-    ];
-
-    await ctx.reply(productText, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: keyboard
-      }
-    });
-
-    await ctx.answerCbQuery();
-
   } catch (error) {
-    console.error('❌ Erreur dans showProductDetails:', error);
-    await ctx.answerCbQuery('❌ Erreur lors du chargement des détails');
+    console.error('❌ Erreur affichage produits:', error);
+    await ctx.reply('❌ Erreur lors du chargement des produits. Veuillez réessayer.');
   }
 }
 
 async function showProductVideo(ctx, productId) {
   try {
-    console.log(`🎬 showProductVideo - User: ${ctx.from.id}, Product: ${productId}`);
-    
-    // Pour l'instant, message temporaire
-    await ctx.reply(
-      '🎬 *Vidéo de présentation*\n\n' +
-      'Les vidéos des produits seront bientôt disponibles!\n\n' +
-      'En attendant, vous pouvez consulter les détails du produit.',
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📋 Voir les détails', callback_data: `details_${productId}` }],
-            [{ text: '📦 Retour au catalogue', callback_data: 'back_to_products' }]
-          ]
-        }
-      }
-    );
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (!product || !product.videoUrl) {
+      return ctx.answerCbQuery('❌ Vidéo non disponible pour ce produit');
+    }
+
+    await ctx.replyWithVideo(product.videoUrl, {
+      caption: `🎬 *${product.name}*\n${product.description}`,
+      parse_mode: 'Markdown'
+    });
 
     await ctx.answerCbQuery();
-
   } catch (error) {
-    console.error('❌ Erreur dans showProductVideo:', error);
+    console.error('❌ Erreur vidéo produit:', error);
     await ctx.answerCbQuery('❌ Erreur lors du chargement de la vidéo');
   }
 }
 
-module.exports = {
-  showProducts,
-  showProductDetails,
-  showProductVideo
-};
+async function showProductDetails(ctx, productId) {
+  try {
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (!product) {
+      return ctx.answerCbQuery('❌ Produit non trouvé');
+    }
+
+    const detailsMessage = `
+🔍 *Détails Complets - ${product.name}*
+
+📊 *Informations techniques:*
+• Type: ${product.category || 'Non spécifié'}
+
+📝 *Description:*
+${product.description}
+
+💡 *Conseils:*
+• Conserver au sec et à l'abri de la lumière
+• Consommer avec modération
+• Réservé aux adultes
+
+📦 *Disponibilité:*
+${product.stock}g en stock
+    `.trim();
+
+    await ctx.reply(detailsMessage, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('⬅️ Retour aux produits', 'back_to_products')]
+      ])
+    });
+
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur détails produit:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du chargement des détails');
+  }
+}
+
+module.exports = { showProducts, showProductVideo, showProductDetails };
