@@ -1,25 +1,36 @@
 const express = require('express');
-const bot = require('./bot');
-const { sequelize, syncDatabase, testConnectionWithRetry } = require('./models');
+const { Telegraf, session } = require('telegraf');
+const { sequelize, syncDatabase } = require('./models');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+
+// Configuration du bot
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Middleware de base
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Variable pour suivre l'état de la base de données
+// Variables d'état
 let dbConnected = false;
+let botStarted = false;
 
 // Health check endpoint amélioré
 app.get('/health', async (req, res) => {
   try {
-    const dbStatus = await testConnectionWithRetry();
+    // Test rapide de la base de données
+    let dbStatus = false;
+    try {
+      await sequelize.authenticate();
+      dbStatus = true;
+    } catch (error) {
+      dbStatus = false;
+    }
     
     res.status(200).json({ 
       status: 'OK', 
-      bot: 'running',
+      bot: botStarted ? 'running' : 'starting',
       database: dbStatus ? 'connected' : 'disconnected',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development'
@@ -27,60 +38,72 @@ app.get('/health', async (req, res) => {
   } catch (error) {
     res.status(500).json({ 
       status: 'ERROR', 
-      bot: 'running',
-      database: 'disconnected',
       error: error.message,
       timestamp: new Date().toISOString()
     });
   }
 });
 
-// Stats endpoint (admin seulement) avec gestion d'erreur
-app.get('/stats', async (req, res) => {
+// Endpoint pour forcer la reconnexion DB
+app.post('/reconnect-db', async (req, res) => {
   try {
-    if (!dbConnected) {
-      return res.status(503).json({ 
-        error: 'Service temporairement indisponible',
-        database: 'disconnected'
-      });
-    }
-
-    const { Order, Product, Customer } = require('./models');
-    
-    const totalOrders = await Order.count();
-    const pendingOrders = await Order.count({ where: { status: 'pending' } });
-    const totalProducts = await Product.count({ where: { isActive: true } });
-    const totalCustomers = await Customer.count();
+    console.log('🔄 Reconnexion manuelle à la base de données...');
+    dbConnected = await syncDatabase();
     
     res.json({
-      orders: {
-        total: totalOrders,
-        pending: pendingOrders
-      },
-      products: totalProducts,
-      customers: totalCustomers,
-      timestamp: new Date().toISOString(),
-      database: 'connected'
+      success: dbConnected,
+      database: dbConnected ? 'connected' : 'disconnected',
+      message: dbConnected ? 'Base de données reconnectée' : 'Échec de reconnexion'
     });
   } catch (error) {
-    console.error('❌ Erreur stats:', error);
-    res.status(500).json({ 
-      error: 'Erreur lors de la récupération des statistiques',
-      database: 'error'
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
+});
+
+// Routes basiques pour le bot (mode dégradé)
+app.get('/', (req, res) => {
+  res.json({
+    service: 'CaliParis Bot',
+    status: 'running',
+    database: dbConnected ? 'connected' : 'disconnected',
+    message: dbConnected ? 'Service complet opérationnel' : 'Mode dégradé - Base de données hors ligne'
+  });
+});
+
+// Configuration simple du bot pour mode dégradé
+bot.start((ctx) => {
+  if (!dbConnected) {
+    return ctx.reply(
+      '🤖 *Bienvenue sur CaliParis Bot!* 🌿\n\n' +
+      '⚠️ *Service en mode maintenance*\n' +
+      'Notre système est temporairement en cours de maintenance.\n\n' +
+      'Veuillez réessayer dans quelques minutes.\n\n' +
+      '📞 Contact: @CaliParisSupport',
+      { parse_mode: 'Markdown' }
+    );
+  }
+  
+  ctx.reply(
+    '🤖 *Bienvenue sur CaliParis Bot!* 🌿\n\n' +
+    'Découvrez nos produits premium de qualité supérieure.\n\n' +
+    '✨ *Nos services:*\n' +
+    '• 📦 Catalogue produits\n' +
+    '• 🛒 Panier personnalisé\n' +
+    '• 🚚 Livraison rapide\n' +
+    '• 💳 Paiement sécurisé\n\n' +
+    'Utilisez les boutons ci-dessous pour naviguer:',
+    { parse_mode: 'Markdown' }
+  );
 });
 
 // Webhook pour production
 if (process.env.NODE_ENV === 'production') {
   const webhookPath = `/webhook/${bot.secretPathComponent()}`;
   app.use(bot.webhookCallback(webhookPath));
-  
   console.log(`🌐 Webhook configuré sur: ${webhookPath}`);
-} else {
-  // Mode polling en développement
-  bot.launch();
-  console.log('🔵 Bot en mode polling (développement)');
 }
 
 // Route 404
@@ -97,40 +120,76 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Fonction de démarrage du serveur
-async function startServer() {
-  try {
-    console.log('🚀 Démarrage de CaliParis Bot...');
-    console.log('✅ BOT_TOKEN:', process.env.BOT_TOKEN ? 'Configuré' : 'Manquant');
-    console.log('✅ DATABASE_URL:', process.env.DATABASE_URL ? 'Configuré' : 'Manquant');
-    console.log('✅ ADMIN_CHAT_ID:', process.env.ADMIN_CHAT_ID ? 'Configuré' : 'Manquant');
-    console.log('✅ NODE_ENV:', process.env.NODE_ENV || 'development');
+// Fonction de démarrage principale
+async function startApplication() {
+  console.log('🚀 Démarrage de CaliParis Bot...');
+  console.log('🔍 Vérification des variables d\'environnement:');
+  console.log('✅ BOT_TOKEN:', process.env.BOT_TOKEN ? 'Configuré' : '❌ Manquant');
+  console.log('✅ DATABASE_URL:', process.env.DATABASE_URL ? 'Configuré' : '❌ Manquant');
+  console.log('✅ ADMIN_CHAT_ID:', process.env.ADMIN_CHAT_ID ? 'Configuré' : 'Non configuré');
+  console.log('✅ NODE_ENV:', process.env.NODE_ENV || 'development');
 
-    // Tentative de connexion à la base de données
-    console.log('🔄 Tentative de connexion à la base de données...');
-    dbConnected = await syncDatabase();
-
-    if (dbConnected) {
-      console.log('✅ Base de données connectée et synchronisée');
-    } else {
-      console.log('⚠️  Mode dégradé: fonctionnement sans base de données');
-    }
-
-    // Démarrer le serveur même sans base de données
-    app.listen(PORT, () => {
-      console.log(`🚀 Serveur démarré sur le port ${PORT}`);
-      console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-      console.log(`🗄️  Base de données: ${dbConnected ? '✅ Connectée' : '❌ Déconnectée'}`);
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur critique au démarrage:', error);
+  // Vérification des variables critiques
+  if (!process.env.BOT_TOKEN) {
+    console.error('❌ BOT_TOKEN manquant - Arrêt du service');
     process.exit(1);
+  }
+
+  if (!process.env.DATABASE_URL) {
+    console.error('❌ DATABASE_URL manquante - Mode dégradé forcé');
+    dbConnected = false;
+  } else {
+    // Tentative de connexion à la base de données
+    console.log('🔄 Connexion à la base de données PostgreSQL...');
+    dbConnected = await syncDatabase();
+  }
+
+  // Démarrer le serveur web
+  app.listen(PORT, () => {
+    console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+    console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 Health check: https://caliparis.onrender.com/health`);
+    console.log(`🗄️  Base de données: ${dbConnected ? '✅ Connectée' : '❌ Déconnectée'}`);
+    
+    if (!dbConnected) {
+      console.log('⚠️  MODE DÉGRADÉ: Le bot fonctionne sans base de données');
+      console.log('🔧 Solutions:');
+      console.log('   1. Vérifiez la configuration PostgreSQL sur Render');
+      console.log('   2. Vérifiez que le service PostgreSQL est running');
+      console.log('   3. Testez la connexion manuellement');
+    }
+  });
+
+  // Démarrer le bot
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      // En production, le webhook est déjà configuré
+      botStarted = true;
+      console.log('🤖 Bot prêt (mode webhook)');
+    } else {
+      await bot.launch();
+      botStarted = true;
+      console.log('🤖 Bot démarré (mode polling)');
+    }
+  } catch (error) {
+    console.error('❌ Erreur démarrage bot:', error);
   }
 }
 
-// Démarrer le serveur
-startServer();
+// Gestion propre de l'arrêt
+process.once('SIGINT', () => {
+  console.log('🛑 Arrêt du bot...');
+  bot.stop('SIGINT');
+  process.exit(0);
+});
+
+process.once('SIGTERM', () => {
+  console.log('🛑 Arrêt du bot...');
+  bot.stop('SIGTERM');
+  process.exit(0);
+});
+
+// Démarrer l'application
+startApplication();
 
 module.exports = app;
