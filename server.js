@@ -1,12 +1,9 @@
 const express = require('express');
-const { Telegraf, session } = require('telegraf');
+const bot = require('./bot'); // Import de votre bot complet
 const { sequelize, syncDatabase } = require('./models');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-
-// Configuration du bot
-const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Middleware de base
 app.use(express.json());
@@ -16,7 +13,7 @@ app.use(express.urlencoded({ extended: true }));
 let dbConnected = false;
 let botStarted = false;
 
-// Health check endpoint amélioré
+// Health check endpoint
 app.get('/health', async (req, res) => {
   try {
     // Test rapide de la base de données
@@ -63,7 +60,7 @@ app.post('/reconnect-db', async (req, res) => {
   }
 });
 
-// Endpoint pour configurer le webhook manuellement
+// Endpoint pour configurer le webhook
 app.post('/setup-webhook', async (req, res) => {
   try {
     const webhookPath = `/webhook/${bot.secretPathComponent()}`;
@@ -104,7 +101,7 @@ app.get('/webhook-info', async (req, res) => {
   }
 });
 
-// Routes basiques pour le bot (mode dégradé)
+// Route principale
 app.get('/', (req, res) => {
   res.json({
     service: 'CaliParis Bot',
@@ -119,33 +116,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// Configuration simple du bot pour mode dégradé
-bot.start((ctx) => {
-  if (!dbConnected) {
-    return ctx.reply(
-      '🤖 *Bienvenue sur CaliParis Bot!* 🌿\n\n' +
-      '⚠️ *Service en mode maintenance*\n' +
-      'Notre système est temporairement en cours de maintenance.\n\n' +
-      'Veuillez réessayer dans quelques minutes.\n\n' +
-      '📞 Contact: @CaliParisSupport',
-      { parse_mode: 'Markdown' }
-    );
-  }
-  
-  ctx.reply(
-    '🤖 *Bienvenue sur CaliParis Bot!* 🌿\n\n' +
-    'Découvrez nos produits premium de qualité supérieure.\n\n' +
-    '✨ *Nos services:*\n' +
-    '• 📦 Catalogue produits\n' +
-    '• 🛒 Panier personnalisé\n' +
-    '• 🚚 Livraison rapide\n' +
-    '• 💳 Paiement sécurisé\n\n' +
-    'Utilisez les boutons ci-dessous pour naviguer:',
-    { parse_mode: 'Markdown' }
-  );
-});
+// ==================== CONFIGURATION WEBHOOK ====================
 
-// Webhook pour production - CONFIGURATION AUTOMATIQUE
+// Webhook pour production
 if (process.env.NODE_ENV === 'production') {
   const webhookPath = `/webhook/${bot.secretPathComponent()}`;
   const webhookUrl = `https://caliparis.onrender.com${webhookPath}`;
@@ -153,7 +126,7 @@ if (process.env.NODE_ENV === 'production') {
   console.log('🌐 Configuration du webhook Telegram...');
   console.log('📡 URL:', webhookUrl);
   
-  // Configurer le webhook automatiquement au démarrage
+  // Configurer le webhook automatiquement
   bot.telegram.setWebhook(webhookUrl)
     .then(() => {
       console.log('✅ Webhook Telegram configuré avec succès!');
@@ -182,7 +155,8 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Fonction de démarrage principale
+// ==================== DÉMARRAGE APPLICATION ====================
+
 async function startApplication() {
   console.log('🚀 Démarrage de CaliParis Bot...');
   console.log('🔍 Vérification des variables d\'environnement:');
@@ -241,6 +215,7 @@ async function startApplication() {
       }, 3000);
       
     } else {
+      // En développement, utiliser le mode polling
       await bot.launch();
       botStarted = true;
       console.log('🤖 Bot démarré (mode polling)');
