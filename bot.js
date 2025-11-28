@@ -19,6 +19,10 @@ const cartService = require('./services/cartService');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// ✅ INITIALISATION DU SERVICE DE NOTIFICATION
+const notificationService = require('./services/notificationService');
+notificationService.setBot(bot); // Passer l'instance du bot principal
+
 // Vérification du token bot
 if (!process.env.BOT_TOKEN) {
   console.error('❌ BOT_TOKEN manquant dans les variables d\'environnement');
@@ -56,6 +60,23 @@ bot.use(updateCartTimestamp);
 
 // Commandes de base
 bot.start(handleStart);
+
+// Commande /cancel pour annuler les opérations en cours
+bot.hears('/cancel', async (ctx) => {
+  try {
+    // Nettoyer l'état d'attente de quantité
+    if (ctx.session.awaitingCustomQuantity) {
+      delete ctx.session.awaitingCustomQuantity;
+      ctx.session = { ...ctx.session };
+      await ctx.reply('❌ Saisie de quantité annulée');
+    } else {
+      await ctx.reply('❌ Aucune opération en cours à annuler');
+    }
+  } catch (error) {
+    console.error('Erreur commande /cancel:', error);
+    await ctx.reply('❌ Erreur lors de l\'annulation');
+  }
+});
 
 // Handlers de messages
 bot.hears('📦 Voir le catalogue', async (ctx) => {
@@ -143,6 +164,12 @@ bot.action(/custom_(\d+)/, async (ctx) => {
 
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
   try {
+    // Nettoyer l'état d'attente
+    if (ctx.session.awaitingCustomQuantity) {
+      delete ctx.session.awaitingCustomQuantity;
+      ctx.session = { ...ctx.session };
+    }
+    
     await ctx.deleteMessage();
     await ctx.answerCbQuery('❌ Quantité personnalisée annulée');
   } catch (error) {
@@ -192,6 +219,16 @@ bot.action('back_to_cart', async (ctx) => {
   } catch (error) {
     console.error('Erreur retour panier:', error);
     await ctx.reply('❌ Impossible de charger le panier');
+  }
+});
+
+bot.action('back_to_menu', async (ctx) => {
+  try {
+    await ctx.deleteMessage();
+    await handleStart(ctx);
+  } catch (error) {
+    console.error('Erreur retour menu:', error);
+    await ctx.reply('❌ Impossible de charger le menu');
   }
 });
 
@@ -301,13 +338,15 @@ bot.action(/admin_cancel_(\d+)/, isAdmin, async (ctx) => {
 bot.on('text', async (ctx) => {
   const handled = await handleQuantityMessage(ctx);
   if (!handled) {
+    // Le message n'est pas une quantité, afficher le menu principal
     await ctx.reply(
       '🤖 *Bot CaliParis*\n\n' +
       'Utilisez les boutons du menu pour naviguer:\n' +
       '• 📦 Voir le catalogue\n' +
       '• 🛒 Mon panier\n' +
       '• ℹ️ Informations\n' +
-      '• 📞 Contact',
+      '• 📞 Contact\n\n' +
+      '💡 *Astuce:* Utilisez /cancel pour annuler une opération en cours',
       { parse_mode: 'Markdown' }
     );
   }
@@ -331,7 +370,7 @@ setInterval(async () => {
   } catch (error) {
     console.error('❌ Erreur nettoyage paniers:', error);
   }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000); // Toutes les heures
 
 // Démarrage du bot (pour le mode développement)
 async function startBot() {
