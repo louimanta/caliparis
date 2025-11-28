@@ -1,49 +1,32 @@
-const { Cart } = require('../models');
 
+// middlewares/cartMiddleware.js
 async function checkCartNotEmpty(ctx, next) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    
-    if (!cart || cart.items.length === 0) {
-      if (ctx.callbackQuery) {
-        return ctx.answerCbQuery('❌ Votre panier est vide');
-      }
-      return ctx.reply('❌ Votre panier est vide. Ajoutez des produits d\'abord.');
+    console.log(`🔍 checkCartNotEmpty - User: ${ctx.from.id}`);
+    console.log(`📦 Panier:`, ctx.session.cart);
+
+    if (!ctx.session.cart || ctx.session.cart.length === 0) {
+      await ctx.answerCbQuery('❌ Votre panier est vide');
+      return;
     }
     
-    return next();
+    await next();
   } catch (error) {
-    console.error('Erreur vérification panier:', error);
-    if (ctx.callbackQuery) {
-      return ctx.answerCbQuery('❌ Erreur vérification panier');
-    }
-    return ctx.reply('❌ Erreur vérification panier');
+    console.error('❌ Erreur dans checkCartNotEmpty:', error);
+    await ctx.answerCbQuery('❌ Erreur de vérification du panier');
   }
 }
 
 function validateQuantity(ctx, next) {
-  if (ctx.message && ctx.message.text) {
-    const quantity = parseInt(ctx.message.text);
-    
-    if (isNaN(quantity) || quantity < 1 || quantity > 1000) {
-      return ctx.reply('❌ Quantité invalide. Veuillez entrer un nombre entre 1 et 1000.');
-    }
-  }
-  
+  // Validation des quantités
   return next();
 }
 
-async function updateCartTimestamp(ctx, next) {
-  try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    if (cart) {
-      cart.lastActivity = new Date();
-      await cart.save();
-    }
-  } catch (error) {
-    console.error('Erreur mise à jour timestamp:', error);
+function updateCartTimestamp(ctx, next) {
+  // Mettre à jour le timestamp du panier
+  if (ctx.session.cart) {
+    ctx.session.cartUpdatedAt = new Date();
   }
-  
   return next();
 }
 
