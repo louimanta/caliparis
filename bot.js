@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const { Telegraf, session } = require('telegraf');
 const { sequelize } = require('./models');
@@ -16,18 +15,18 @@ const { checkCartNotEmpty, validateQuantity, updateCartTimestamp } = require('./
 
 // Import des services
 const cartService = require('./services/cartService');
+const notificationService = require('./services/notificationService');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-
-// ✅ INITIALISATION DU SERVICE DE NOTIFICATION
-const notificationService = require('./services/notificationService');
-notificationService.setBot(bot); // Passer l'instance du bot principal
 
 // Vérification du token bot
 if (!process.env.BOT_TOKEN) {
   console.error('❌ BOT_TOKEN manquant dans les variables d\'environnement');
   process.exit(1);
 }
+
+// ✅ INITIALISATION DU SERVICE DE NOTIFICATION
+notificationService.setBot(bot); // Passer l'instance du bot principal
 
 // STORE DE SESSIONS PERSISTANT
 const sessionStore = {
@@ -64,7 +63,6 @@ bot.start(handleStart);
 // Commande /cancel pour annuler les opérations en cours
 bot.hears('/cancel', async (ctx) => {
   try {
-    // Nettoyer l'état d'attente de quantité
     if (ctx.session.awaitingCustomQuantity) {
       delete ctx.session.awaitingCustomQuantity;
       ctx.session = { ...ctx.session };
@@ -89,10 +87,7 @@ bot.hears('🛒 Mon panier', async (ctx) => {
 
 bot.hears('🎬 Vidéo présentation', async (ctx) => {
   try {
-    await ctx.replyWithVideo('https://i.imgur.com/presentation-video.mp4', {
-      caption: '🌟 *CaliParis - La qualité supérieure* 🌟\n\nDécouvrez pourquoi nos clients nous font confiance!',
-      parse_mode: 'Markdown'
-    });
+    await ctx.reply('🎬 Vidéo de présentation bientôt disponible!');
   } catch (error) {
     console.error('Erreur envoi vidéo:', error);
     await ctx.reply('❌ Impossible de charger la vidéo de présentation.');
@@ -164,7 +159,6 @@ bot.action(/custom_(\d+)/, async (ctx) => {
 
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
   try {
-    // Nettoyer l'état d'attente
     if (ctx.session.awaitingCustomQuantity) {
       delete ctx.session.awaitingCustomQuantity;
       ctx.session = { ...ctx.session };
@@ -338,7 +332,6 @@ bot.action(/admin_cancel_(\d+)/, isAdmin, async (ctx) => {
 bot.on('text', async (ctx) => {
   const handled = await handleQuantityMessage(ctx);
   if (!handled) {
-    // Le message n'est pas une quantité, afficher le menu principal
     await ctx.reply(
       '🤖 *Bot CaliParis*\n\n' +
       'Utilisez les boutons du menu pour naviguer:\n' +
@@ -370,7 +363,7 @@ setInterval(async () => {
   } catch (error) {
     console.error('❌ Erreur nettoyage paniers:', error);
   }
-}, 60 * 60 * 1000); // Toutes les heures
+}, 60 * 60 * 1000);
 
 // Démarrage du bot (pour le mode développement)
 async function startBot() {
