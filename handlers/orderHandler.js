@@ -79,7 +79,7 @@ async function handlePaymentMethod(ctx, method) {
         `📧 *Votre commande a été envoyée*\n` +
         `• Nous vous contactons sous 24h\n` +
         `• Pour les détails de paiement crypto\n` +
-        `• Livraison sous 24h-48h\n\n` +
+        `• Livraison sous 2h-4h\n\n` +
         `📍 Zone de livraison: Paris et banlieue\n\n` +
         `🛒 Merci pour votre confiance!`;
 
@@ -97,7 +97,7 @@ async function handlePaymentMethod(ctx, method) {
         `• Nous vous contactons sous 24h\n` +
         `• Pour organiser la livraison\n` +
         `• Paiement en espèces à la livraison\n` +
-        `• Livraison sous 24h-48h\n\n` +
+        `• Livraison sous 2h-4h\n\n` +
         `📍 Zone de livraison: Paris et banlieue\n\n` +
         `🛒 Merci pour votre confiance!`;
 
@@ -130,7 +130,7 @@ async function createOrder(ctx, paymentMethod, total) {
     const order = await Order.create({
       userId: ctx.from.id,
       username: ctx.from.username || ctx.from.first_name,
-      items: ctx.session.cart,
+      items: ctx.session.cart, // CORRECTION: Utiliser directement ctx.session.cart
       totalAmount: total,
       paymentMethod: paymentMethod,
       status: 'pending'
@@ -139,7 +139,7 @@ async function createOrder(ctx, paymentMethod, total) {
     console.log(`✅ Commande créée: ${order.id}`);
 
     // NOTIFIER AUTOMATIQUEMENT avec tous les détails
-    await notifyNewOrder(order, ctx);
+    await notifyNewOrder(order, ctx, ctx.session.cart); // CORRECTION: Passer le panier en paramètre
 
     // Vider le panier après commande
     ctx.session.cart = [];
@@ -153,19 +153,23 @@ async function createOrder(ctx, paymentMethod, total) {
   }
 }
 
-// FONCTION AMÉLIORÉE: Notification automatique détaillée
-async function notifyNewOrder(order, ctx) {
+// FONCTION CORRIGÉE: Notification automatique détaillée
+async function notifyNewOrder(order, ctx, cartItems) { // CORRECTION: Ajouter cartItems en paramètre
   try {
     const user = ctx.from;
     const username = user.username ? `@${user.username}` : user.first_name;
     const userId = user.id;
     
-    // Formater les produits
+    // CORRECTION: Utiliser cartItems au lieu de order.items
     let productsText = '';
-    order.items.forEach(item => {
-      const itemTotal = parseFloat(item.price) * item.quantity;
-      productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-    });
+    if (cartItems && cartItems.length > 0) {
+      cartItems.forEach(item => {
+        const itemTotal = parseFloat(item.price) * item.quantity;
+        productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+      });
+    } else {
+      productsText = '• Aucun produit trouvé\n';
+    }
 
     // Date formatée
     const now = new Date();
@@ -182,7 +186,7 @@ async function notifyNewOrder(order, ctx) {
       `💳 *MODE DE PAIEMENT:* ${order.paymentMethod}\n` +
       `🕒 *DATE:* ${dateStr} ${timeStr}\n\n` +
       `📍 *ZONE:* Paris et banlieue\n` +
-      `🚚 *LIVRAISON:* 24h-48h\n\n` +
+      `🚚 *LIVRAISON:* 2h-4h\n\n` +
       `⚡ *ACTION RAPIDE:*\n` +
       `📞 Contacter: tg://user?id=${userId}`;
 
@@ -224,7 +228,7 @@ async function handleDiscountRequest(ctx) {
       `💶 *Total: ${total}€*\n\n` +
       `Votre commande totale: ${totalQuantity}g\n\n` +
       `📞 *Votre demande a été envoyée*\n` +
-      `• Nous vous contactons sous 24h\n` +
+      `• Nous vous contactons des que possible\n` +
       `• Pour discuter des remises spéciales\n` +
       `• Et personnaliser votre commande\n\n` +
       `*Remises progressives selon la quantité!*`;
@@ -257,10 +261,12 @@ async function notifyDiscountRequest(ctx, totalQuantity, total) {
     const username = user.username ? `@${user.username}` : user.first_name;
 
     let productsText = '';
-    ctx.session.cart.forEach(item => {
-      const itemTotal = parseFloat(item.price) * item.quantity;
-      productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
-    });
+    if (ctx.session.cart && ctx.session.cart.length > 0) {
+      ctx.session.cart.forEach(item => {
+        const itemTotal = parseFloat(item.price) * item.quantity;
+        productsText += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
+      });
+    }
 
     const message = 
       `💎 *DEMANDE DE REMISE - GROS* 💎\n\n` +
@@ -286,7 +292,7 @@ async function confirmDiscountRequest(ctx) {
     await ctx.reply(
       `💎 *Demande Envoyée!* ✅\n\n` +
       `Votre demande de remise a été transmise.\n` +
-      `Nous vous contactons sous 24h pour discuter des meilleurs prix!`,
+      `Nous vous contactons des que possible pour discuter des meilleurs prix!`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
