@@ -1,6 +1,6 @@
 const { Markup } = require('telegraf');
 const { Order, Product, Customer, OrderItem } = require('../models');
-const notificationService = require('./notificationService');
+const notificationService = require('../services/notificationService');
 
 async function handleAdminCommands(ctx) {
   const adminIds = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',') : [];
@@ -146,7 +146,7 @@ async function handleOrderAction(ctx, orderId, action) {
     await order.update({ status: newStatus });
     await ctx.answerCbQuery(message);
 
-    // Notifier le client si nécessaire
+    // Notifier le client via le service
     if (action === 'process' || action === 'contact') {
       await notificationService.notifyOrderUpdate(ctx, order, order.Customer.telegramId, 'confirmed');
     } else if (action === 'cancel') {
