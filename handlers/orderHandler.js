@@ -1,5 +1,5 @@
 const { Order, OrderItem, Customer, Cart, Product } = require('../models');
-const notificationService = require('./notificationService');
+const notificationService = require('../services/notificationService');
 
 async function handleCheckout(ctx) {
   try {
@@ -75,7 +75,7 @@ async function handlePaymentMethod(ctx, method) {
       deliveryAddress: customer.deliveryAddress || 'À confirmer'
     });
 
-    // Créer les order items et mettre à jour le stock
+    // Créer les order items
     for (const item of cart.items) {
       await OrderItem.create({
         orderId: order.id,
@@ -90,11 +90,6 @@ async function handlePaymentMethod(ctx, method) {
       if (product) {
         product.stock -= item.quantity;
         await product.save();
-
-        // Notifier si stock faible
-        if (product.stock < 10) {
-          await notificationService.notifyLowStock(ctx, product);
-        }
       }
     }
 
@@ -110,7 +105,7 @@ async function handlePaymentMethod(ctx, method) {
 ✅ *Commande #${order.id} créée!*
 
 💳 *Paiement Crypto:*
-• Envoyez ${order.totalAmount}€ en BTC ou ETH
+• Envoyez ${cart.totalAmount}€ en BTC ou ETH
 • Adresse: **1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa**
 • Contactez-nous après paiement
 
@@ -126,7 +121,7 @@ async function handlePaymentMethod(ctx, method) {
 
 💵 *Paiement Cash:*
 • Paiement à la livraison
-• Préparer le montant exact: ${order.totalAmount}€
+• Préparer le montant exact: ${cart.totalAmount}€
 
 📦 *Livraison:*
 • Sous 24-48h dans Paris
@@ -139,7 +134,7 @@ async function handlePaymentMethod(ctx, method) {
     // Message de confirmation au client
     await ctx.reply(paymentMessage, { parse_mode: 'Markdown' });
 
-    // Notification admin
+    // Notification admin via le service
     await notificationService.notifyAdmin(ctx, order, customer, cart);
 
     await ctx.answerCbQuery('✅ Commande créée!');
@@ -204,7 +199,7 @@ async function confirmDiscountRequest(ctx) {
     const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
     const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
 
-    // Notification admin pour remise
+    // Notification admin via le service
     await notificationService.notifyDiscountRequest(ctx, ctx.from.id, cart, totalQuantity);
 
     await ctx.reply(
