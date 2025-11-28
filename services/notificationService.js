@@ -1,8 +1,7 @@
 const { Markup } = require('telegraf');
-const bot = require('../bot');
 
 class NotificationService {
-  async notifyAdmin(order) {
+  async notifyAdmin(order, bot) {
     try {
       const productsText = order.products.map(p =>
         `• ${p.product?.name || 'Produit'} - ${p.quantity}g x ${p.product?.price || 0}€`
@@ -48,10 +47,10 @@ ${order.address}
     }
   }
 
-  async notifyDiscountRequest(userId, cart, totalGrams) {
+  async notifyDiscountRequest(userId, cart, totalGrams, bot) {
     try {
       const productsText = cart.items.map(p =>
-        `• ${p.product.name} - ${p.quantity}g x ${p.product.price}€`
+        `• ${p.name} - ${p.quantity}g x ${p.unitPrice}€`
       ).join('\n');
 
       const message = `
@@ -59,7 +58,7 @@ ${order.address}
 
 👤 Client: ${userId}
 📦 Quantité totale: ${totalGrams}g
-💰 Total normal: ${cart.total}€
+💰 Total normal: ${cart.totalAmount}€
 
 📋 Produits:
 ${productsText}
@@ -80,7 +79,7 @@ ${productsText}
     }
   }
 
-  async notifyLowStock(product) {
+  async notifyLowStock(product, bot) {
     try {
       const message = `
 ⚠️ *STOCK FAIBLE* ⚠️
@@ -102,7 +101,7 @@ Il est temps de réapprovisionner!
     }
   }
 
-  async notifyOrderUpdate(order, updateType) {
+  async notifyOrderUpdate(order, updateType, bot) {
     try {
       let message = '';
 
