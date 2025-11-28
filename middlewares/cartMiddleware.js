@@ -1,33 +1,58 @@
+const { Cart } = require('../models');
 
-// middlewares/cartMiddleware.js
 async function checkCartNotEmpty(ctx, next) {
   try {
-    console.log(`🔍 checkCartNotEmpty - User: ${ctx.from.id}`);
-    console.log(`📦 Panier:`, ctx.session.cart);
-
-    if (!ctx.session.cart || ctx.session.cart.length === 0) {
-      await ctx.answerCbQuery('❌ Votre panier est vide');
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    
+    if (!cart || !cart.items || cart.items.length === 0) {
+      if (ctx.callbackQuery) {
+        await ctx.answerCbQuery('❌ Votre panier est vide');
+        return;
+      }
+      await ctx.reply('❌ Votre panier est vide. Ajoutez des produits d\'abord.');
       return;
     }
     
-    await next();
+    return next();
   } catch (error) {
-    console.error('❌ Erreur dans checkCartNotEmpty:', error);
-    await ctx.answerCbQuery('❌ Erreur de vérification du panier');
+    console.error('Erreur vérification panier:', error);
+    if (ctx.callbackQuery) {
+      await ctx.answerCbQuery('❌ Erreur vérification panier');
+      return;
+    }
+    await ctx.reply('❌ Erreur vérification panier');
   }
 }
 
-function validateQuantity(ctx, next) {
-  // Validation des quantités
+async function validateQuantity(ctx, next) {
+  if (ctx.message && ctx.message.text) {
+    const quantity = parseFloat(ctx.message.text);
+    
+    if (isNaN(quantity) || quantity < 0.1 || quantity > 1000) {
+      await ctx.reply('❌ Quantité invalide. Veuillez entrer un nombre entre 0.1 et 1000 grammes.');
+      return;
+    }
+    
+    // Stocker la quantité validée dans le contexte
+    ctx.validatedQuantity = quantity;
+  }
+  
   return next();
 }
 
-function updateCartTimestamp(ctx, next) {
-  // Mettre à jour le timestamp du panier
-  if (ctx.session.cart) {
-    ctx.session.cartUpdatedAt = new Date();
+async function updateCartTimestamp(ctx, next) {
+  try {
+    await next(); // D'abord exécuter l'action
+    
+    // Puis mettre à jour le timestamp
+    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    if (cart) {
+      cart.lastActivity = new Date();
+      await cart.save();
+    }
+  } catch (error) {
+    console.error('Erreur mise à jour timestamp:', error);
   }
-  return next();
 }
 
 module.exports = {
