@@ -1,67 +1,34 @@
 require('dotenv').config();
 const { Telegraf, session } = require('telegraf');
 
-// Import des handlers avec gestion d'erreur
-let handlers;
-try {
-  handlers = {
-    startHandler: require('./handlers/startHandler'),
-    productHandler: require('./handlers/productHandler'),
-    cartHandler: require('./handlers/cartHandler'),
-    orderHandler: require('./handlers/orderHandler'),
-    adminHandler: require('./handlers/adminHandler')
-  };
-} catch (error) {
-  console.error('❌ Erreur chargement handlers:', error.message);
-  // Fallback basique
-  handlers = {
-    startHandler: { handleStart: (ctx) => ctx.reply('🌿 Bienvenue chez CaliParis!') },
-    productHandler: { showProducts: (ctx) => ctx.reply('📦 Catalogue temporairement indisponible') },
-    cartHandler: { showCart: (ctx) => ctx.reply('🛒 Panier temporairement indisponible') },
-    orderHandler: { handleCheckout: (ctx) => ctx.reply('💰 Commande temporairement indisponible') },
-    adminHandler: { handleAdminCommands: (ctx) => ctx.reply('👨‍💼 Admin panel indisponible') }
-  };
-}
+// Import des handlers
+const { handleStart } = require('./handlers/startHandler');
+const { showProducts, showProductVideo, showProductDetails } = require('./handlers/productHandler');
+const { handleAddToCart, handleCustomQuantity, handleCustomQuantityResponse, showCart, clearCart } = require('./handlers/cartHandler');
+const { handleCheckout, handlePaymentMethod, handleDiscountRequest, confirmDiscountRequest } = require('./handlers/orderHandler');
+const { handleAdminCommands, showAdminStats, showPendingOrders, handleOrderAction } = require('./handlers/adminHandler');
 
-// Import des middlewares avec gestion d'erreur
-let middlewares;
-try {
-  middlewares = {
-    auth: require('./middlewares/authMiddleware'),
-    cart: require('./middlewares/cartMiddleware')
-  };
-} catch (error) {
-  console.error('❌ Erreur chargement middlewares:', error.message);
-  // Middlewares basiques de secours
-  middlewares = {
-    auth: {
-      isAdmin: (ctx, next) => next(),
-      isUser: (ctx, next) => next(),
-      logUserAction: (ctx, next) => next(),
-      rateLimit: () => (ctx, next) => next()
-    },
-    cart: {
-      checkCartNotEmpty: (ctx, next) => next(),
-      validateQuantity: (ctx, next) => next(),
-      updateCartTimestamp: (ctx, next) => next()
-    }
-  };
-}
+// Import des middlewares
+const { isAdmin, isUser, logUserAction, rateLimit } = require('./middlewares/authMiddleware');
+const { checkCartNotEmpty, validateQuantity, updateCartTimestamp } = require('./middlewares/cartMiddleware');
+
+// Import des services
+const notificationService = require('./services/notificationService');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Middlewares globaux
 bot.use(session());
-bot.use(middlewares.auth.logUserAction);
-bot.use(middlewares.auth.rateLimit());
-bot.use(middlewares.cart.updateCartTimestamp);
+bot.use(logUserAction);
+bot.use(rateLimit());
+bot.use(updateCartTimestamp);
 
 // Commandes de base
-bot.start(handlers.startHandler.handleStart);
+bot.start(handleStart);
 
 // Handlers de messages
-bot.hears('📦 Voir le catalogue', handlers.productHandler.showProducts);
-bot.hears('🛒 Mon panier', handlers.cartHandler.showCart);
+bot.hears('📦 Voir le catalogue', showProducts);
+bot.hears('🛒 Mon panier', showCart);
 bot.hears('🎬 Vidéo présentation', (ctx) => {
   ctx.reply('🎬 Vidéo de présentation bientôt disponible!\n\nDécouvrez notre qualité premium 🌿');
 });
@@ -99,25 +66,25 @@ bot.hears('💎 Commandes en gros', (ctx) => {
 // Gestion des quantités personnalisées
 bot.on('text', async (ctx, next) => {
   if (ctx.session && ctx.session.waitingForCustomQuantity) {
-    await handlers.cartHandler.handleCustomQuantityResponse(ctx);
+    await handleCustomQuantityResponse(ctx);
     return;
   }
   return next();
 });
 
 // Commandes admin
-bot.hears('/admin', middlewares.auth.isAdmin, handlers.adminHandler.handleAdminCommands);
+bot.hears('/admin', isAdmin, handleAdminCommands);
 
 // Callbacks pour produits
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
   const quantity = parseInt(ctx.match[1]);
   const productId = parseInt(ctx.match[2]);
-  await handlers.cartHandler.handleAddToCart(ctx, productId, quantity);
+  await handleAddToCart(ctx, productId, quantity);
 });
 
 bot.action(/custom_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
-  await handlers.cartHandler.handleCustomQuantity(ctx, productId);
+  await handleCustomQuantity(ctx, productId);
 });
 
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
@@ -127,46 +94,49 @@ bot.action(/cancel_custom_(\d+)/, async (ctx) => {
 
 bot.action(/video_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
-  await handlers.productHandler.showProductVideo(ctx, productId);
+  await showProductVideo(ctx, productId);
 });
 
 bot.action(/details_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
-  await handlers.productHandler.showProductDetails(ctx, productId);
+  await showProductDetails(ctx, productId);
 });
 
 // Callbacks pour panier
-bot.action('view_cart', handlers.cartHandler.showCart);
+bot.action('view_cart', showCart);
 bot.action('back_to_products', async (ctx) => {
-  await handlers.productHandler.showProducts(ctx);
+  await showProducts(ctx);
 });
-bot.action('back_to_cart', handlers.cartHandler.showCart);
+bot.action('back_to_cart', showCart);
 bot.action('clear_cart', async (ctx) => {
-  await handlers.cartHandler.clearCart(ctx);
+  await clearCart(ctx);
   await ctx.answerCbQuery('✅ Panier vidé');
 });
 
 // Callbacks pour commande
 bot.action('checkout', async (ctx) => {
-  await middlewares.cart.checkCartNotEmpty(ctx, () => handlers.orderHandler.handleCheckout(ctx));
+  await checkCartNotEmpty(ctx, () => handleCheckout(ctx));
 });
 bot.action('pay_crypto', async (ctx) => {
-  await middlewares.cart.checkCartNotEmpty(ctx, () => handlers.orderHandler.handlePaymentMethod(ctx, 'crypto'));
+  await checkCartNotEmpty(ctx, () => handlePaymentMethod(ctx, 'crypto'));
 });
 bot.action('pay_cash', async (ctx) => {
-  await middlewares.cart.checkCartNotEmpty(ctx, () => handlers.orderHandler.handlePaymentMethod(ctx, 'cash'));
+  await checkCartNotEmpty(ctx, () => handlePaymentMethod(ctx, 'cash'));
 });
 bot.action('ask_discount', async (ctx) => {
-  await middlewares.cart.checkCartNotEmpty(ctx, () => handlers.orderHandler.handleDiscountRequest(ctx));
+  await checkCartNotEmpty(ctx, () => handleDiscountRequest(ctx));
+});
+bot.action('confirm_discount_request', async (ctx) => {
+  await checkCartNotEmpty(ctx, () => confirmDiscountRequest(ctx));
 });
 
 // Callbacks admin
-bot.action('admin_stats', middlewares.auth.isAdmin, handlers.adminHandler.showAdminStats);
-bot.action('admin_pending_orders', middlewares.auth.isAdmin, handlers.adminHandler.showPendingOrders);
-bot.action(/admin_process_(\d+)/, middlewares.auth.isAdmin, (ctx) => 
-  handlers.adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'process'));
-bot.action(/admin_contact_(\d+)/, middlewares.auth.isAdmin, (ctx) => 
-  handlers.adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact'));
+bot.action('admin_stats', isAdmin, showAdminStats);
+bot.action('admin_pending_orders', isAdmin, showPendingOrders);
+bot.action(/admin_process_(\d+)/, isAdmin, (ctx) => 
+  handleOrderAction(ctx, parseInt(ctx.match[1]), 'process'));
+bot.action(/admin_contact_(\d+)/, isAdmin, (ctx) => 
+  handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact'));
 
 // Gestion des erreurs
 bot.catch((err, ctx) => {
