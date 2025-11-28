@@ -1,5 +1,5 @@
-
 // handlers/cartHandler.js
+const { Product } = require('../models');
 
 async function handleAddToCart(ctx, productId, quantity) {
   try {
@@ -57,23 +57,127 @@ async function handleAddToCart(ctx, productId, quantity) {
 
     // Répondre différemment selon le type de contexte
     if (ctx.callbackQuery) {
-      // C'est un callback (bouton)
       await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier!`);
     } else {
-      // C'est un message texte (quantité personnalisée)
       await ctx.reply(`✅ ${quantity}g de ${product.name} ajouté au panier!`);
     }
 
   } catch (error) {
     console.error('❌ Erreur dans handleAddToCart:', error);
     
-    // Gestion d'erreur selon le type de contexte
     if (ctx.callbackQuery) {
       await ctx.answerCbQuery('❌ Erreur lors de l\'ajout au panier');
     } else {
       await ctx.reply('❌ Erreur lors de l\'ajout au panier');
     }
     throw error;
+  }
+}
+
+async function handleCustomQuantity(ctx, productId) {
+  try {
+    // Stocker l'ID du produit en attente de quantité
+    ctx.session.awaitingCustomQuantity = productId;
+    ctx.session = { ...ctx.session };
+
+    await ctx.reply(
+      `🔢 *Quantité personnalisée*\n\n` +
+      `Veuillez entrer la quantité souhaitée (en grammes):\n` +
+      `Exemple: 5 pour 5 grammes\n\n` +
+      `❌ Pour annuler, utilisez /cancel`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ Annuler', callback_data: `cancel_custom_${productId}` }]
+          ]
+        }
+      }
+    );
+
+    await ctx.answerCbQuery();
+
+  } catch (error) {
+    console.error('❌ Erreur dans handleCustomQuantity:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la demande de quantité');
+  }
+}
+
+async function showCart(ctx) {
+  try {
+    console.log(`🛒 showCart - User: ${ctx.from.id}`);
+    console.log(`📦 Contenu du panier:`, ctx.session.cart);
+    
+    if (!ctx.session.cart || ctx.session.cart.length === 0) {
+      await ctx.reply(
+        '🛒 *Votre panier est vide*\n\n' +
+        'Ajoutez des produits depuis le catalogue pour commencer vos achats!',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    let total = 0;
+    let cartText = '🛒 *VOTRE PANIER*\n\n';
+    
+    ctx.session.cart.forEach((item, index) => {
+      const itemTotal = parseFloat(item.price) * item.quantity;
+      total += itemTotal;
+      cartText += `${index + 1}. ${item.name}\n`;
+      cartText += `   💰 ${item.price}€/g x ${item.quantity}g = ${itemTotal}€\n\n`;
+    });
+
+    cartText += `💶 *TOTAL: ${total}€*\n\n`;
+    cartText += `📍 Livraison: Paris et banlieue\n`;
+    cartText += `🚚 Délai: 2h-4h`;
+
+    const keyboard = [
+      [{ text: '💰 Passer commande', callback_data: 'checkout' }],
+      [{ text: '🗑️ Vider le panier', callback_data: 'clear_cart' }],
+      [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }]
+    ];
+
+    await ctx.reply(cartText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur dans showCart:', error);
+    await ctx.reply('❌ Erreur lors du chargement du panier');
+  }
+}
+
+async function clearCart(ctx) {
+  try {
+    ctx.session.cart = [];
+    ctx.session = { ...ctx.session };
+    
+    await ctx.reply(
+      '🗑️ *Panier vidé*\n\n' +
+      'Votre panier a été vidé avec succès!',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Erreur dans clearCart:', error);
+    await ctx.reply('❌ Erreur lors du vidage du panier');
   }
 }
 
@@ -125,31 +229,10 @@ async function handleQuantityMessage(ctx) {
   }
 }
 
-async function handleCustomQuantity(ctx, productId) {
-  try {
-    // Stocker l'ID du produit en attente de quantité
-    ctx.session.awaitingCustomQuantity = productId;
-    ctx.session = { ...ctx.session };
-
-    await ctx.reply(
-      `🔢 *Quantité personnalisée*\n\n` +
-      `Veuillez entrer la quantité souhaitée (en grammes):\n` +
-      `Exemple: 5 pour 5 grammes\n\n` +
-      `❌ Pour annuler, utilisez /cancel`,
-      { 
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '❌ Annuler', callback_data: `cancel_custom_${productId}` }]
-          ]
-        }
-      }
-    );
-
-    await ctx.answerCbQuery();
-
-  } catch (error) {
-    console.error('❌ Erreur dans handleCustomQuantity:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de la demande de quantité');
-  }
-}
+module.exports = {
+  handleAddToCart,
+  handleCustomQuantity,
+  showCart,
+  clearCart,
+  handleQuantityMessage
+};
