@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const { Telegraf, session, Scenes: { Stage } } = require('telegraf');
 const { sequelize } = require('./models');
@@ -25,16 +26,50 @@ if (!process.env.BOT_TOKEN) {
   process.exit(1);
 }
 
-// Middlewares globaux
-bot.use(session());
+// STORE DE SESSIONS PERSISTANT
+const sessionStore = {
+  sessions: new Map(),
+  
+  get(key) {
+    console.log(`🔍 Get session for: ${key}`);
+    const session = this.sessions.get(key);
+    console.log(`📦 Session retrieved:`, session);
+    return Promise.resolve(session || { cart: [] });
+  },
+  
+  set(key, session) {
+    console.log(`💾 Set session for: ${key}`, session);
+    this.sessions.set(key, session);
+    return Promise.resolve();
+  },
+  
+  delete(key) {
+    console.log(`🗑️ Delete session for: ${key}`);
+    this.sessions.delete(key);
+    return Promise.resolve();
+  }
+};
+
+// Middlewares globaux AVEC SESSION STORE
+bot.use(session({ 
+  store: sessionStore,
+  defaultSession: () => ({ cart: [] }) // Panier vide par défaut
+}));
 bot.use(logUserAction);
 bot.use(rateLimit());
 bot.use(updateCartTimestamp);
 
+// MIDDLEWARE DE DEBUG POUR LES SESSIONS
+bot.use(async (ctx, next) => {
+  console.log('🔄 Session avant traitement:', ctx.session);
+  await next();
+  console.log('💾 Session après traitement:', ctx.session);
+});
+
 // Commandes de base
 bot.start(handleStart);
 
-// Handlers de messages - AJOUT DE ASYNC/AWAIT
+// Handlers de messages - AVEC ASYNC/AWAIT
 bot.hears('📦 Voir le catalogue', async (ctx) => {
   await showProducts(ctx);
 });
@@ -95,14 +130,20 @@ bot.hears('/admin', isAdmin, handleAdminCommands);
 bot.hears('/stats', isAdmin, showAdminStats);
 bot.hears('/orders', isAdmin, showPendingOrders);
 
-// Callbacks pour produits - GESTION DES ERREURS AMÉLIORÉE
+// Callbacks pour produits - AVEC DEBUG ET GESTION D'ERREURS
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
   try {
     const quantity = parseInt(ctx.match[1]);
     const productId = parseInt(ctx.match[2]);
+    console.log(`🛍️ Ajout au panier - User: ${ctx.from.id}, Product: ${productId}, Qty: ${quantity}`);
+    console.log(`📋 Session avant ajout:`, ctx.session);
+    
     await handleAddToCart(ctx, productId, quantity);
+    
+    console.log(`✅ Session après ajout:`, ctx.session);
+    await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier!`);
   } catch (error) {
-    console.error('Erreur ajout panier:', error);
+    console.error('❌ Erreur ajout panier:', error);
     await ctx.answerCbQuery('❌ Erreur lors de l\'ajout au panier');
   }
 });
