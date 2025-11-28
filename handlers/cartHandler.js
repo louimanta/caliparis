@@ -1,60 +1,70 @@
 
-const { Cart, Product } = require('../models');
+const { Product } = require('../models');
 
 async function handleAddToCart(ctx, productId, quantity) {
   try {
+    console.log(`🛍️ handleAddToCart - User: ${ctx.from.id}, Product: ${productId}, Qty: ${quantity}`);
+    
+    // Initialiser le panier si inexistant
+    if (!ctx.session.cart) {
+      ctx.session.cart = [];
+      console.log('🆕 Panier initialisé');
+    }
+    
     const product = await Product.findByPk(productId);
     if (!product) {
-      return ctx.answerCbQuery('❌ Produit non trouvé');
+      throw new Error('Produit non trouvé');
     }
-
-    if (product.stock < quantity) {
-      return ctx.answerCbQuery('❌ Stock insuffisant');
-    }
-
-    let cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
     
-    if (!cart) {
-      cart = await Cart.create({
-        telegramId: ctx.from.id,
-        items: []
-      });
-    }
-
-    const existingItemIndex = cart.items.findIndex(item => item.productId === productId);
+    // Vérifier si le produit est déjà dans le panier
+    const existingItemIndex = ctx.session.cart.findIndex(item => item.productId === productId);
     
     if (existingItemIndex > -1) {
-      cart.items[existingItemIndex].quantity += quantity;
-      cart.items[existingItemIndex].totalPrice = cart.items[existingItemIndex].quantity * product.price;
+      // Mettre à jour la quantité
+      ctx.session.cart[existingItemIndex].quantity += quantity;
+      console.log(`📈 Quantité mise à jour: ${ctx.session.cart[existingItemIndex].quantity}`);
     } else {
-      cart.items.push({
-        productId: productId,
+      // Ajouter nouveau produit
+      ctx.session.cart.push({
+        productId: product.id,
         name: product.name,
+        price: product.price,
         quantity: quantity,
-        unitPrice: product.price,
-        totalPrice: quantity * product.price
+        addedAt: new Date()
       });
+      console.log(`🆕 Produit ajouté: ${product.name}`);
     }
-
-    cart.totalAmount = cart.items.reduce((sum, item) => sum + item.totalPrice, 0);
-    cart.lastActivity = new Date();
     
-    await cart.save();
+    // SAUVEGARDER EXPLICITEMENT LA SESSION
+    ctx.session = { ...ctx.session };
     
-    await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
-    await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier!`);
+    console.log(`📊 Panier après ajout:`, ctx.session.cart);
+    
+    await ctx.answerCbQuery(`✅ ${quantity}g de ${product.name} ajouté au panier!`);
     
   } catch (error) {
-    console.error('Erreur ajout panier:', error);
-    await ctx.answerCbQuery('❌ Erreur ajout panier');
+    console.error('❌ Erreur dans handleAddToCart:', error);
+    throw error;
   }
 }
 
 async function handleCustomQuantity(ctx, productId) {
   try {
+    console.log(`🔢 Quantité personnalisée pour produit: ${productId}`);
+    
+    const product = await Product.findByPk(productId);
+    if (!product) {
+      await ctx.answerCbQuery('❌ Produit non trouvé');
+      return;
+    }
+    
     await ctx.reply(
-      '🔢 Entrez la quantité souhaitée (en grammes) :\nExemple: 5 pour 5 grammes',
+      `🔢 *Quantité personnalisée - ${product.name}*\n\n` +
+      `Entrez la quantité souhaitée (en grammes):\n` +
+      `• Prix: ${product.price}€/g\n` +
+      `• Exemple: 5 pour 5 grammes`,
       {
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [{ text: '❌ Annuler', callback_data: `cancel_custom_${productId}` }]
@@ -62,139 +72,114 @@ async function handleCustomQuantity(ctx, productId) {
         }
       }
     );
-
-    // Initialiser la session si elle n'existe pas
-    if (!ctx.session) {
-      ctx.session = {};
-    }
     
-    // Stocker l'attente dans la session
-    ctx.session.waitingForCustomQuantity = {
-      productId: productId,
-      timestamp: Date.now()
-    };
-
-  } catch (error) {
-    console.error('Erreur quantité personnalisée:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de la saisie');
-  }
-}
-
-async function handleCustomQuantityResponse(ctx) {
-  try {
-    if (!ctx.session || !ctx.session.waitingForCustomQuantity) {
-      return;
-    }
-
-    const quantity = parseFloat(ctx.message.text);
-    const productId = ctx.session.waitingForCustomQuantity.productId;
-
-    if (isNaN(quantity) || quantity <= 0) {
-      await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
-      return;
-    }
-
-    // Supprimer l'état d'attente
-    delete ctx.session.waitingForCustomQuantity;
-
-    // Ajouter au panier
-    await handleAddToCart(ctx, productId, quantity);
+    // Stocker le produit en attente de quantité
+    ctx.session.pendingProduct = productId;
+    ctx.session = { ...ctx.session };
     
   } catch (error) {
-    console.error('Erreur réponse quantité:', error);
-    await ctx.reply('❌ Erreur lors du traitement de la quantité');
+    console.error('❌ Erreur dans handleCustomQuantity:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la saisie de quantité');
   }
 }
 
 async function showCart(ctx) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
+    console.log(`🛒 showCart - User: ${ctx.from.id}`);
+    console.log(`📦 Contenu du panier:`, ctx.session.cart);
     
-    if (!cart || cart.items.length === 0) {
-      return ctx.reply(
-        '🛒 Votre panier est vide\n\n' +
-        '📦 Parcourez notre catalogue pour ajouter des produits!',
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '📦 Voir le catalogue', callback_data: 'back_to_products' }]
-            ]
-          }
-        }
+    // Vérifier si le panier existe et n'est pas vide
+    if (!ctx.session.cart || ctx.session.cart.length === 0) {
+      await ctx.reply(
+        '🛒 *Votre panier est vide*\n\n' +
+        'Ajoutez des produits depuis le catalogue 📦',
+        { parse_mode: 'Markdown' }
       );
+      return;
     }
-
-    let message = '🛒 *Votre Panier*\n\n';
-    let totalAmount = 0;
-
-    for (const item of cart.items) {
-      const product = await Product.findByPk(item.productId);
-      if (product) {
-        message += `🌿 ${product.name}\n`;
-        message += `   📦 Quantité: ${item.quantity}g\n`;
-        message += `   💰 Prix: ${item.totalPrice}€\n\n`;
-        totalAmount += item.totalPrice;
-      }
+    
+    let total = 0;
+    let message = '🛒 *Votre Panier CaliParis*\n\n';
+    
+    for (const item of ctx.session.cart) {
+      const itemTotal = item.price * item.quantity;
+      total += itemTotal;
+      message += `• ${item.name} - ${item.quantity}g - ${itemTotal}€\n`;
     }
-
-    message += `💵 *Total: ${totalAmount}€*`;
-
-    // Appliquer remise automatique pour grosses quantités
-    const totalQuantity = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    let discountMessage = '';
-
-    if (totalQuantity >= 30) {
-      discountMessage = '\n\n💎 *Remise Gros Quantité Activée!*';
-      const discount = totalQuantity >= 50 ? 15 : totalQuantity >= 30 ? 10 : 0;
-      message += discountMessage;
-      message += `\n📦 Quantité totale: ${totalQuantity}g`;
-      message += `\n🎁 Remise: ${discount}% appliquée`;
-    } else if (totalQuantity >= 20) {
-      discountMessage = '\n\n💡 *Ajoutez 10g de plus pour une remise de 10%!*';
-      message += discountMessage;
-    }
-
-    const keyboard = {
+    
+    message += `\n💶 *Total: ${total}€*\n\n`;
+    message += 'Choisissez une action:';
+    
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '💰 Passer la commande', callback_data: 'checkout' }],
-          [{ text: '🎁 Demander une remise', callback_data: 'ask_discount' }],
-          [
-            { text: '📦 Continuer les achats', callback_data: 'back_to_products' },
-            { text: '🗑 Vider le panier', callback_data: 'clear_cart' }
-          ]
+          [{ text: '📦 Continuer mes achats', callback_data: 'back_to_products' }],
+          [{ text: '💰 Commander', callback_data: 'checkout' }],
+          [{ text: '🗑️ Vider le panier', callback_data: 'clear_cart' }]
         ]
-      },
-      parse_mode: 'Markdown'
-    };
-
-    await ctx.reply(message, keyboard);
+      }
+    });
     
   } catch (error) {
-    console.error('Erreur affichage panier:', error);
-    ctx.reply('❌ Erreur lors du chargement du panier');
+    console.error('❌ Erreur dans showCart:', error);
+    await ctx.reply('❌ Erreur lors du chargement du panier');
   }
 }
 
 async function clearCart(ctx) {
   try {
-    const cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    if (cart) {
-      cart.items = [];
-      cart.totalAmount = 0;
-      await cart.save();
-    }
-    await ctx.reply('✅ Panier vidé avec succès');
+    console.log(`🗑️ clearCart - User: ${ctx.from.id}`);
+    
+    ctx.session.cart = [];
+    ctx.session = { ...ctx.session };
+    
+    console.log('✅ Panier vidé avec succès');
+    
+    await ctx.reply(
+      '🗑️ *Panier vidé*\n\n' +
+      'Votre panier a été vidé avec succès!',
+      { parse_mode: 'Markdown' }
+    );
+    
   } catch (error) {
-    console.error('Erreur vidage panier:', error);
-    ctx.reply('❌ Erreur lors du vidage du panier');
+    console.error('❌ Erreur dans clearCart:', error);
+    await ctx.reply('❌ Erreur lors du vidage du panier');
   }
 }
 
-module.exports = { 
-  handleAddToCart, 
-  handleCustomQuantity, 
-  handleCustomQuantityResponse,
-  showCart, 
-  clearCart 
+// Handler pour les messages de quantité personnalisée
+async function handleQuantityMessage(ctx) {
+  try {
+    if (!ctx.session.pendingProduct) return false;
+    
+    const quantity = parseInt(ctx.message.text);
+    if (isNaN(quantity) || quantity <= 0) {
+      await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5)');
+      return true;
+    }
+    
+    const productId = ctx.session.pendingProduct;
+    delete ctx.session.pendingProduct;
+    
+    await handleAddToCart(ctx, productId, quantity);
+    
+    // Supprimer le message de demande de quantité
+    await ctx.deleteMessage();
+    
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Erreur dans handleQuantityMessage:', error);
+    await ctx.reply('❌ Erreur lors de l\'ajout de la quantité');
+    return true;
+  }
+}
+
+module.exports = {
+  handleAddToCart,
+  handleCustomQuantity,
+  showCart,
+  clearCart,
+  handleQuantityMessage
 };
