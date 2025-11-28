@@ -1,10 +1,11 @@
-
 const express = require('express');
-const bot = require('./bot'); // Import de votre bot complet avec tous les handlers
+const bot = require('./bot'); // ✅ CHANGEMENT ICI - Import du bot complet
 const { sequelize, syncDatabase } = require('./models');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// ✅ SUPPRIMEZ cette ligne: const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Middleware de base
 app.use(express.json());
@@ -70,6 +71,12 @@ app.get('/', (req, res) => {
     message: dbConnected ? 'Service complet opérationnel' : 'Mode dégradé - Base de données hors ligne'
   });
 });
+
+// Configuration simple du bot pour mode dégradé
+// ✅ SUPPRIMEZ toute cette section des handlers car ils sont déjà dans bot.js
+// bot.start((ctx) => { ... });
+// bot.hears('📦 Voir le catalogue', ...);
+// etc.
 
 // Webhook pour production
 if (process.env.NODE_ENV === 'production') {
