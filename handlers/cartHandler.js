@@ -50,7 +50,7 @@ async function handleAddToCart(ctx, productId, quantity) {
 
     console.log(`📋 Items avant:`, cart.items);
     
-    // ✅ CORRECTION : FORCER la conversion en array à la lecture
+    // Conversion forcée en array
     const currentItems = Array.isArray(cart.items) ? cart.items : JSON.parse(cart.items || '[]');
     console.log(`📋 Items convertis avant:`, currentItems);
     
@@ -73,17 +73,16 @@ async function handleAddToCart(ctx, productId, quantity) {
       console.log(`🆕 Nouvel item ajouté:`, newItem);
     }
 
-    // ✅ CORRECTION : SAUVEGARDER l'array converti
-    cart.items = currentItems;
-    cart.totalAmount = currentItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    cart.lastActivity = new Date();
+    console.log(`💾 Mise à jour panier...`);
+    console.log(`📦 Items à sauvegarder:`, currentItems);
     
-    console.log(`💾 Sauvegarde panier...`);
-    console.log(`📦 Items après:`, cart.items);
-    console.log(`💰 Total:`, cart.totalAmount);
-    
-    const saved = await safeDbOperation(() => cart.save());
-    console.log(`✅ Panier sauvegardé:`, saved ? 'OUI' : 'NON');
+    // ✅ CORRECTION : Utiliser UPDATE au lieu de SAVE
+    const updated = await safeDbOperation(() => cart.update({
+      items: currentItems,
+      totalAmount: currentItems.reduce((sum, item) => sum + item.totalPrice, 0),
+      lastActivity: new Date()
+    }));
+    console.log(`✅ Panier mis à jour:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
     await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier!`);
