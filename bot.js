@@ -155,7 +155,6 @@ sequelize.sync()
   .then(async () => {
     console.log('✅ Base de données synchronisée');
     
-    // Charger les produits initiaux si nécessaire
     const { Product } = require('./models');
     const productCount = await Product.count();
     if (productCount === 0) {
