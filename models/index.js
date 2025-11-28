@@ -1,71 +1,55 @@
 const { Sequelize, DataTypes } = require('sequelize');
-const path = require('path');
 
-// Configuration robuste de la base de données
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: 'postgres',
-  logging: process.env.NODE_ENV === 'development' ? console.log : false,
-  dialectOptions: {
-    ssl: process.env.NODE_ENV === 'production' ? {
-      require: true,
-      rejectUnauthorized: false
-    } : false
-  },
-  pool: {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000,
-    evict: 10000
-  },
-  retry: {
-    max: 3,
-    match: [
-      /ConnectionError/,
-      /Connection terminated/,
-      /ECONNRESET/,
-      /SequelizeConnectionError/
-    ]
+// Configuration PostgreSQL pour Render
+function createDatabaseConnection() {
+  const databaseUrl = process.env.DATABASE_URL;
+  
+  if (!databaseUrl) {
+    console.error('❌ DATABASE_URL manquante dans les variables d\'environnement');
+    return null;
   }
-});
 
-// Fonction de reconnexion automatique
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
-
-async function setupConnectionHandlers() {
-  sequelize.connectionManager.initPools();
-
-  sequelize.connectionManager.on('disconnect', () => {
-    console.log('🔄 Déconnexion de la base de données détectée');
+  console.log('🔗 Configuration de la connexion PostgreSQL...');
+  
+  const sequelize = new Sequelize(databaseUrl, {
+    dialect: 'postgres',
+    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    dialectOptions: {
+      ssl: process.env.NODE_ENV === 'production' ? {
+        require: true,
+        rejectUnauthorized: false
+      } : false
+    },
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000,
+      evict: 15000
+    },
+    retry: {
+      max: 5,
+      timeout: 60000,
+      match: [
+        /ConnectionError/,
+        /Connection terminated/,
+        /ECONNRESET/,
+        /SequelizeConnectionError/,
+        /getaddrinfo ENOTFOUND/,
+        /Connection refused/
+      ]
+    }
   });
 
-  sequelize.connectionManager.on('reconnect', () => {
-    console.log('✅ Reconnexion à la base de données réussie');
-    reconnectAttempts = 0;
-  });
+  return sequelize;
 }
 
-// Test de connexion avec retry
-async function testConnectionWithRetry() {
-  try {
-    await sequelize.authenticate();
-    console.log('✅ Connexion à la base de données établie');
-    reconnectAttempts = 0;
-    return true;
-  } catch (error) {
-    reconnectAttempts++;
-    console.error(`❌ Tentative de connexion ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} échouée:`, error.message);
-    
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      console.log(`🔄 Nouvelle tentative dans 5 secondes...`);
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      return testConnectionWithRetry();
-    } else {
-      console.error('❌ Échec de toutes les tentatives de connexion');
-      return false;
-    }
-  }
+// Créer l'instance Sequelize
+const sequelize = createDatabaseConnection();
+
+if (!sequelize) {
+  console.error('❌ Impossible de créer la connexion à la base de données');
+  process.exit(1);
 }
 
 // Modèle Product
@@ -248,30 +232,57 @@ OrderItem.belongsTo(Order, { foreignKey: 'orderId' });
 Product.hasMany(OrderItem, { foreignKey: 'productId' });
 OrderItem.belongsTo(Product, { foreignKey: 'productId' });
 
-// Synchronisation robuste de la base de données
+// Test de connexion robuste
+async function testConnection() {
+  let attempts = 0;
+  const maxAttempts = 10;
+  
+  while (attempts < maxAttempts) {
+    try {
+      attempts++;
+      console.log(`🔄 Tentative de connexion ${attempts}/${maxAttempts}...`);
+      
+      await sequelize.authenticate();
+      console.log('✅ Connexion PostgreSQL établie avec succès!');
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ Tentative ${attempts} échouée:`, error.message);
+      
+      if (attempts < maxAttempts) {
+        const delay = Math.min(attempts * 2000, 10000); // Backoff exponentiel
+        console.log(`⏳ Nouvelle tentative dans ${delay/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error('❌ Échec de toutes les tentatives de connexion');
+        return false;
+      }
+    }
+  }
+}
+
+// Synchronisation de la base de données
 async function syncDatabase() {
   try {
-    const isConnected = await testConnectionWithRetry();
+    const isConnected = await testConnection();
     
     if (!isConnected) {
       console.log('⚠️  Mode dégradé: fonctionnement sans base de données');
       return false;
     }
     
-    await setupConnectionHandlers();
-    
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ force: false });
-      console.log('✅ Modèles synchronisés');
+    // Synchronisation en production (safe)
+    if (process.env.NODE_ENV === 'production') {
+      await sequelize.sync({ alter: false });
+      console.log('✅ Modèles synchronisés (production safe)');
     } else {
-      // En production, on utilise sync sans force
-      await sequelize.sync();
-      console.log('✅ Modèles synchronisés en production');
+      await sequelize.sync({ force: false });
+      console.log('✅ Modèles synchronisés (développement)');
     }
     
     return true;
   } catch (error) {
-    console.error('❌ Erreur de synchronisation de la base de données:', error);
+    console.error('❌ Erreur de synchronisation:', error);
     return false;
   }
 }
@@ -285,5 +296,5 @@ module.exports = {
   OrderItem,
   Cart,
   syncDatabase,
-  testConnectionWithRetry
+  testConnection
 };
