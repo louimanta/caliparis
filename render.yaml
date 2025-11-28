@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: npm run start
+    startCommand: node server.js
     envVars:
       - key: BOT_TOKEN
         value: 8411037700:AAF9gGmnox1_ldecRmdsKnwVCdt105maxQg
@@ -18,4 +18,3 @@ services:
         value: postgresql://caliparis_db_user:vL79KhYGMUooguL41n6O2I8K7EZAbXBt@dpg-d4k7dbili9vc73dj2gd0-a.oregon-postgres.render.com/caliparis_db
       - key: PORT
         value: 10000
-
