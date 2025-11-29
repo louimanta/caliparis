@@ -1,24 +1,36 @@
 const express = require('express');
-const bot = require('./bot'); // ✅ CHANGEMENT ICI - Import du bot complet
+const bot = require('./bot');
 const { sequelize, syncDatabase } = require('./models');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// ✅ SUPPRIMEZ cette ligne: const bot = new Telegraf(process.env.BOT_TOKEN);
-
-// Middleware de base
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Variables d'état
 let dbConnected = false;
 let botStarted = false;
 
-// Health check endpoint amélioré
+// ✅ AJOUTEZ cette fonction
+async function initializeDatabase() {
+  try {
+    console.log('🔄 Initialisation de la base de données...');
+    await syncDatabase();
+    
+    // Initialiser les produits
+    const initializeProducts = require('./scripts/initializeProducts');
+    await initializeProducts();
+    
+    console.log('✅ Base de données initialisée avec les produits');
+    return true;
+  } catch (error) {
+    console.error('❌ Erreur initialisation base de données:', error);
+    return false;
+  }
+}
+
 app.get('/health', async (req, res) => {
   try {
-    // Test rapide de la base de données
     let dbStatus = false;
     try {
       await sequelize.authenticate();
@@ -43,7 +55,6 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Endpoint pour forcer la reconnexion DB
 app.post('/reconnect-db', async (req, res) => {
   try {
     console.log('🔄 Reconnexion manuelle à la base de données...');
@@ -62,7 +73,6 @@ app.post('/reconnect-db', async (req, res) => {
   }
 });
 
-// Routes basiques pour le bot (mode dégradé)
 app.get('/', (req, res) => {
   res.json({
     service: 'CaliParis Bot',
@@ -72,25 +82,16 @@ app.get('/', (req, res) => {
   });
 });
 
-// Configuration simple du bot pour mode dégradé
-// ✅ SUPPRIMEZ toute cette section des handlers car ils sont déjà dans bot.js
-// bot.start((ctx) => { ... });
-// bot.hears('📦 Voir le catalogue', ...);
-// etc.
-
-// Webhook pour production
 if (process.env.NODE_ENV === 'production') {
   const webhookPath = `/webhook/${bot.secretPathComponent()}`;
   app.use(bot.webhookCallback(webhookPath));
   console.log(`🌐 Webhook configuré sur: ${webhookPath}`);
 }
 
-// Route 404
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
 });
 
-// Gestionnaire d'erreurs global
 app.use((error, req, res, next) => {
   console.error('❌ Erreur serveur:', error);
   res.status(500).json({ 
@@ -99,7 +100,6 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Fonction de démarrage principale
 async function startApplication() {
   console.log('🚀 Démarrage de CaliParis Bot...');
   console.log('🔍 Vérification des variables d\'environnement:');
@@ -108,7 +108,6 @@ async function startApplication() {
   console.log('✅ ADMIN_CHAT_ID:', process.env.ADMIN_CHAT_ID ? 'Configuré' : 'Non configuré');
   console.log('✅ NODE_ENV:', process.env.NODE_ENV || 'development');
 
-  // Vérification des variables critiques
   if (!process.env.BOT_TOKEN) {
     console.error('❌ BOT_TOKEN manquant - Arrêt du service');
     process.exit(1);
@@ -118,12 +117,11 @@ async function startApplication() {
     console.error('❌ DATABASE_URL manquante - Mode dégradé forcé');
     dbConnected = false;
   } else {
-    // Tentative de connexion à la base de données
+    // ✅ CHANGEZ cette ligne seulement
     console.log('🔄 Connexion à la base de données PostgreSQL...');
-    dbConnected = await syncDatabase();
+    dbConnected = await initializeDatabase(); // ← CHANGÉ ICI
   }
 
-  // Démarrer le serveur web
   app.listen(PORT, () => {
     console.log(`🚀 Serveur démarré sur le port ${PORT}`);
     console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
@@ -132,17 +130,11 @@ async function startApplication() {
     
     if (!dbConnected) {
       console.log('⚠️  MODE DÉGRADÉ: Le bot fonctionne sans base de données');
-      console.log('🔧 Solutions:');
-      console.log('   1. Vérifiez la configuration PostgreSQL sur Render');
-      console.log('   2. Vérifiez que le service PostgreSQL est running');
-      console.log('   3. Testez la connexion manuellement');
     }
   });
 
-  // Démarrer le bot
   try {
     if (process.env.NODE_ENV === 'production') {
-      // En production, le webhook est déjà configuré
       botStarted = true;
       console.log('🤖 Bot prêt (mode webhook)');
     } else {
@@ -155,7 +147,6 @@ async function startApplication() {
   }
 }
 
-// Gestion propre de l'arrêt
 process.once('SIGINT', () => {
   console.log('🛑 Arrêt du bot...');
   bot.stop('SIGINT');
@@ -168,7 +159,6 @@ process.once('SIGTERM', () => {
   process.exit(0);
 });
 
-// Démarrer l'application
 startApplication();
 
 module.exports = app;
