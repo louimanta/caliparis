@@ -152,10 +152,10 @@ async function startApplication() {
   }
 
   // Démarrer le serveur web
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serveur démarré sur le port ${PORT}`);
     console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔗 Health check: https://caliparis.onrender.com/health`);
+    console.log(`🔗 Health check: http://0.0.0.0:${PORT}/health`);
     console.log(`🗄️  Base de données: ${dbConnected ? '✅ Connectée' : '❌ Déconnectée'}`);
     
     if (!dbConnected) {
@@ -163,15 +163,19 @@ async function startApplication() {
     }
   });
 
-  // Démarrer le bot
+  // Démarrer le bot - CORRECTION CRITIQUE POUR RENDER
   try {
     if (process.env.NODE_ENV === 'production') {
+      // Sur Render, utiliser LONG POLLING au lieu de webhook
+      console.log('🤖 Démarrage du bot en mode long polling (Render)...');
+      await bot.launch({ webhook: false });
       botStarted = true;
-      console.log('🤖 Bot prêt (mode webhook)');
+      console.log('✅ Bot démarré avec succès en mode long polling');
     } else {
+      // Développement local
       await bot.launch();
       botStarted = true;
-      console.log('🤖 Bot démarré (mode polling)');
+      console.log('🤖 Bot démarré (mode développement)');
     }
   } catch (error) {
     console.error('❌ Erreur démarrage bot:', error);
@@ -191,7 +195,31 @@ process.once('SIGTERM', () => {
   process.exit(0);
 });
 
+// Gestionnaire pour les erreurs non catchées
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+});
+
+// Service de keep-alive automatique pour Render
+function startKeepAlive() {
+  if (process.env.RENDER && process.env.RENDER_EXTERNAL_URL) {
+    setInterval(async () => {
+      try {
+        const response = await fetch(`${process.env.RENDER_EXTERNAL_URL}/health`);
+        console.log('❤️  Keep-alive ping:', response.status);
+      } catch (error) {
+        console.log('💔 Keep-alive failed:', error.message);
+      }
+    }, 10 * 60 * 1000); // Toutes les 10 minutes
+  }
+}
+
 // Démarrer l'application
 startApplication();
+startKeepAlive();
 
 module.exports = app;
