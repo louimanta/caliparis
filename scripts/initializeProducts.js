@@ -33,7 +33,7 @@ async function initializeProducts() {
         name: '🌿 Cali Kush ',
         description: 'Fleur de CBD biologique, arômes fruités et effets relaxants sans psychoactifs.',
         price: 12.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Cali.jpg',
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Cali.png',
         videoUrl: '',
         stock: 80,
         isActive: true,
