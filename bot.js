@@ -33,6 +33,22 @@ function loadModule(modulePath, fallback = null) {
   }
 }
 
+// === AJOUT: Fonction pour gérer les callbacks expirés ===
+function safeAnswerCbQuery(ctx, text = '') {
+  try {
+    return ctx.answerCbQuery(text).catch(err => {
+      if (err.description && err.description.includes('query is too old')) {
+        console.log('⚠️ Callback query expiré, ignoré silencieusement');
+        return Promise.resolve();
+      }
+      throw err;
+    });
+  } catch (error) {
+    console.log('❌ Erreur answerCbQuery:', error.message);
+    return Promise.resolve();
+  }
+}
+
 // Fallbacks basiques pour les handlers
 const fallbackHandlers = {
   handleStart: (ctx) => ctx.reply('🌿 Bienvenue chez CaliParis! 🌿\n\nUtilisez les boutons pour naviguer.'),
@@ -71,7 +87,13 @@ const adminHandler = loadModule('./handlers/adminHandler', {
   showProductManagement: (ctx) => ctx.reply('🛍️ Gestion produits'),
   showSalesToday: (ctx) => ctx.reply('📈 Ventes aujourd\'hui'),
   showActiveProducts: (ctx) => ctx.reply('✅ Produits actifs'),
-  showOrderStatuses: (ctx) => ctx.reply('🔍 Statuts commandes')
+  showOrderStatuses: (ctx) => ctx.reply('🔍 Statuts commandes'),
+  // === AJOUT DES FALLBACKS POUR LES NOUVELLES FONCTIONS ===
+  disableProduct: (ctx) => ctx.reply('🚫 Désactiver produit'),
+  enableProduct: (ctx) => ctx.reply('✅ Activer produit'),
+  deleteProduct: (ctx) => ctx.reply('🗑️ Supprimer produit'),
+  handleProductIdInput: (ctx) => ctx.reply('🔢 Traitement ID produit'),
+  cancelProductAction: (ctx) => ctx.reply('✅ Action annulée')
 });
 
 // Chargement sécurisé des middlewares
@@ -151,94 +173,179 @@ bot.hears('💎 Commandes en gros', (ctx) => {
   );
 });
 
-// Gestion des quantités personnalisées
+// === AJOUT: Handler pour les inputs de produits (suppression, activation, etc.) ===
 bot.on('text', async (ctx, next) => {
+  // Gestion des quantités personnalisées
   if (ctx.session && ctx.session.waitingForCustomQuantity) {
     await cartHandler.handleCustomQuantityResponse(ctx);
     return;
   }
+  
+  // === AJOUT: Gestion des IDs de produits pour admin ===
+  if (ctx.session && ctx.session.waitingForProductId) {
+    await adminHandler.handleProductIdInput(ctx);
+    return;
+  }
+  
   return next();
 });
 
 // Commandes admin
 bot.hears('/admin', authMiddleware.isAdmin, adminHandler.handleAdminCommands);
 
+// === AJOUT: Commande d'annulation pour admin ===
+bot.hears('/cancel', authMiddleware.isAdmin, adminHandler.cancelProductAction);
+
 // Callbacks pour produits
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
   const quantity = parseInt(ctx.match[1]);
   const productId = parseInt(ctx.match[2]);
+  await safeAnswerCbQuery(ctx, '✅ Produit ajouté');
   await cartHandler.handleAddToCart(ctx, productId, quantity);
 });
 
 bot.action(/custom_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
+  await safeAnswerCbQuery(ctx, '🔢 Quantité personnalisée');
   await cartHandler.handleCustomQuantity(ctx, productId);
 });
 
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '❌ Quantité annulée');
   if (ctx.session) delete ctx.session.waitingForCustomQuantity;
-  await ctx.answerCbQuery('❌ Quantité annulée');
 });
 
 bot.action(/video_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
+  await safeAnswerCbQuery(ctx, '🎬 Chargement vidéo...');
   await productHandler.showProductVideo(ctx, productId);
 });
 
 bot.action(/details_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
+  await safeAnswerCbQuery(ctx, '📊 Chargement détails...');
   await productHandler.showProductDetails(ctx, productId);
 });
 
 // Callbacks pour panier
-bot.action('view_cart', cartHandler.showCart);
-bot.action('back_to_products', productHandler.showProducts);
-bot.action('back_to_cart', cartHandler.showCart);
+bot.action('view_cart', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Chargement panier...');
+  await cartHandler.showCart(ctx);
+});
+
+bot.action('back_to_products', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Retour produits...');
+  await productHandler.showProducts(ctx);
+});
+
+bot.action('back_to_cart', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Retour panier...');
+  await cartHandler.showCart(ctx);
+});
+
 bot.action('clear_cart', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Vidage panier...');
   await cartHandler.clearCart(ctx);
-  await ctx.answerCbQuery('✅ Panier vidé');
 });
 
 // Callbacks pour commande
 bot.action('checkout', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Préparation commande...');
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.handleCheckout(ctx));
 });
+
 bot.action('pay_crypto', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Traitement crypto...');
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.handlePaymentMethod(ctx, 'crypto'));
 });
+
 bot.action('pay_cash', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Traitement cash...');
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.handlePaymentMethod(ctx, 'cash'));
 });
+
 bot.action('ask_discount', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Vérification remise...');
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.handleDiscountRequest(ctx));
 });
+
 bot.action('confirm_discount_request', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Confirmation remise...');
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.confirmDiscountRequest(ctx));
 });
 
 // Callbacks admin
-bot.action('admin_stats', authMiddleware.isAdmin, adminHandler.showAdminStats);
-bot.action('admin_pending_orders', authMiddleware.isAdmin, adminHandler.showPendingOrders);
-bot.action('admin_products', authMiddleware.isAdmin, adminHandler.showProductManagement);
-bot.action('admin_sales_today', authMiddleware.isAdmin, adminHandler.showSalesToday);
-bot.action('admin_active_products', authMiddleware.isAdmin, adminHandler.showActiveProducts);
-bot.action('admin_show_statuses', authMiddleware.isAdmin, adminHandler.showOrderStatuses);
-bot.action('back_to_admin', authMiddleware.isAdmin, adminHandler.handleAdminCommands);
+bot.action('admin_stats', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Chargement stats...');
+  await adminHandler.showAdminStats(ctx);
+});
 
-bot.action(/admin_process_(\d+)/, authMiddleware.isAdmin, (ctx) => 
-  adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'process'));
-bot.action(/admin_contact_(\d+)/, authMiddleware.isAdmin, (ctx) => 
-  adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact'));
-bot.action(/admin_cancel_(\d+)/, authMiddleware.isAdmin, (ctx) => 
-  adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'cancel'));
+bot.action('admin_pending_orders', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Chargement commandes...');
+  await adminHandler.showPendingOrders(ctx);
+});
+
+bot.action('admin_products', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Chargement produits...');
+  await adminHandler.showProductManagement(ctx);
+});
+
+bot.action('admin_sales_today', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Calcul ventes...');
+  await adminHandler.showSalesToday(ctx);
+});
+
+bot.action('admin_active_products', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Chargement produits actifs...');
+  await adminHandler.showActiveProducts(ctx);
+});
+
+bot.action('admin_show_statuses', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Chargement statuts...');
+  await adminHandler.showOrderStatuses(ctx);
+});
+
+// === AJOUT: Callbacks pour la gestion des produits admin ===
+bot.action('admin_disable_product', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Désactivation produit...');
+  await adminHandler.disableProduct(ctx);
+});
+
+bot.action('admin_enable_product', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Activation produit...');
+  await adminHandler.enableProduct(ctx);
+});
+
+bot.action('admin_delete_product', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Suppression produit...');
+  await adminHandler.deleteProduct(ctx);
+});
+
+bot.action('back_to_admin', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Retour admin...');
+  await adminHandler.handleAdminCommands(ctx);
+});
+
+bot.action(/admin_process_(\d+)/, authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Traitement commande...');
+  await adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'process');
+});
+
+bot.action(/admin_contact_(\d+)/, authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Contact client...');
+  await adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact');
+});
+
+bot.action(/admin_cancel_(\d+)/, authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Annulation commande...');
+  await adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'cancel');
+});
 
 // Gestion des erreurs
 bot.catch((err, ctx) => {
   console.error('❌ Erreur bot:', err);
   ctx.reply('❌ Une erreur est survenue. Veuillez réessayer.');
 });
-
-// === CORRECTION : AJOUTEZ CES LIGNES ===
 
 // Démarrage résilient du bot
 async function startBot() {
@@ -270,8 +377,6 @@ async function startBot() {
 
 // Démarrer le bot après un court délai
 setTimeout(startBot, 1000);
-
-// === FIN DE LA CORRECTION ===
 
 // Gestion propre de l'arrêt
 process.once('SIGINT', () => {
