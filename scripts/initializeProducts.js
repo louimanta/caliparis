@@ -1,3 +1,4 @@
+
 // scripts/initializeProducts.js
 const { Product } = require('../models');
 
@@ -10,7 +11,7 @@ async function initializeProducts() {
         name: '🍫 Mimosa',
         description: 'Space cake artisanal. Effets relaxants et euphoriques.',
         price: 8.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg', // ✅ SUPPRIMEZ LE POINT
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg',
         videoUrl: '',
         stock: 100,
         isActive: true,
@@ -21,7 +22,7 @@ async function initializeProducts() {
         name: '💎 Résine Premium - 2g',
         description: 'Résine de haute qualité, riche en terpènes et CBD. Parfait pour la détente.',
         price: 25.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg', // ✅ CHANGEZ POUR CDN
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/resine-premium.jpg',
         videoUrl: '',
         stock: 50,
         isActive: true,
@@ -32,7 +33,7 @@ async function initializeProducts() {
         name: '🌿 Fleur CBD - 1g',
         description: 'Fleur de CBD biologique, arômes fruités et effets relaxants sans psychoactifs.',
         price: 12.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg', // ✅ CHANGEZ POUR CDN
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/fleur-cbd.jpg',
         videoUrl: '',
         stock: 80,
         isActive: true,
@@ -43,7 +44,7 @@ async function initializeProducts() {
         name: '🍯 Huile CBD - 10ml',
         description: 'Huile de CBD full spectrum, 10% de concentration. Idéale pour le bien-être quotidien.',
         price: 35.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg', // ✅ CHANGEZ POUR CDN
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/huile-cbd.jpg',
         videoUrl: '',
         stock: 30,
         isActive: true,
@@ -54,7 +55,7 @@ async function initializeProducts() {
         name: '✨ Cristaux CBD - 1g',
         description: 'Cristaux de CBD purs à 99%. Parfaits pour la fabrication de vos propres produits.',
         price: 20.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg', // ✅ CHANGEZ POUR CDN
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/cristaux-cbd.jpg',
         videoUrl: '',
         stock: 40,
         isActive: true,
@@ -69,7 +70,7 @@ async function initializeProducts() {
         defaults: productData
       });
 
-      // ✅ FORCER la mise à jour si l'URL est incorrecte
+      // Forcer la mise à jour si l'URL est incorrecte
       if (!created && product.imageUrl.endsWith('.jpg.')) {
         product.imageUrl = productData.imageUrl;
         await product.save();
