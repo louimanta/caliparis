@@ -87,7 +87,7 @@ async function handleAddToCart(ctx, productId, quantity) {
     console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
-    await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier!`);
+    await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier! cliquer sur Mon panier pour finaliser votre commande.`);
     
     console.log(`🎉 handleAddToCart TERMINÉ avec succès`);
     
@@ -308,3 +308,4 @@ module.exports = {
   clearCart,
   safeDbOperation
 };
+
