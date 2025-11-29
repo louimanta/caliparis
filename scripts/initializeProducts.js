@@ -12,7 +12,7 @@ async function initializeProducts() {
         description: 'Space cake artisanal. Effets relaxants et euphoriques.',
         price: 8.00,
         imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg',
-        videoUrl: '',
+        videoUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosaV.mp4',
         stock: 100,
         isActive: true,
         category: 'edibles',
