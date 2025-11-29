@@ -285,6 +285,118 @@ async function showProductManagement(ctx) {
   }
 }
 
+// === FONCTIONS MANQUANTES POUR LA SUPPRESSION ===
+
+async function disableProduct(ctx) {
+  try {
+    ctx.session.waitingForProductId = { action: 'disable' };
+    
+    await ctx.reply(
+      '🚫 *Désactiver un produit*\n\n' +
+      'Entrez l\'ID du produit à désactiver :\n' +
+      '(Utilisez /cancel pour annuler)',
+      { parse_mode: 'Markdown' }
+    );
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur désactivation:', error);
+    await ctx.answerCbQuery('❌ Erreur');
+  }
+}
+
+async function enableProduct(ctx) {
+  try {
+    ctx.session.waitingForProductId = { action: 'enable' };
+    
+    await ctx.reply(
+      '✅ *Activer un produit*\n\n' +
+      'Entrez l\'ID du produit à activer :\n' +
+      '(Utilisez /cancel pour annuler)',
+      { parse_mode: 'Markdown' }
+    );
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur activation:', error);
+    await ctx.answerCbQuery('❌ Erreur');
+  }
+}
+
+async function deleteProduct(ctx) {
+  try {
+    ctx.session.waitingForProductId = { action: 'delete' };
+    
+    await ctx.reply(
+      '🗑️ *SUPPRIMER UN PRODUIT*\n\n' +
+      '⚠️  *ATTENTION: Action irréversible!*\n\n' +
+      'Entrez l\'ID du produit à supprimer :\n' +
+      '(Utilisez /cancel pour annuler)',
+      { parse_mode: 'Markdown' }
+    );
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur suppression:', error);
+    await ctx.answerCbQuery('❌ Erreur');
+  }
+}
+
+async function handleProductIdInput(ctx) {
+  try {
+    if (!ctx.session.waitingForProductId) return;
+
+    const productId = parseInt(ctx.message.text);
+    const action = ctx.session.waitingForProductId.action;
+    
+    if (isNaN(productId)) {
+      return ctx.reply('❌ ID invalide. Entrez un nombre.');
+    }
+
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (!product) {
+      return ctx.reply('❌ Produit non trouvé.');
+    }
+
+    let resultMessage = '';
+
+    switch (action) {
+      case 'disable':
+        await product.update({ isActive: false });
+        resultMessage = `🚫 Produit "${product.name}" (ID: ${product.id}) désactivé.`;
+        break;
+      
+      case 'enable':
+        await product.update({ isActive: true });
+        resultMessage = `✅ Produit "${product.name}" (ID: ${product.id}) activé.`;
+        break;
+      
+      case 'delete':
+        await product.destroy();
+        resultMessage = `🗑️ Produit "${product.name}" (ID: ${product.id}) supprimé définitivement.`;
+        break;
+    }
+
+    // Nettoyer la session
+    delete ctx.session.waitingForProductId;
+    
+    await ctx.reply(resultMessage);
+
+  } catch (error) {
+    console.error('❌ Erreur traitement produit:', error);
+    await ctx.reply('❌ Erreur lors du traitement.');
+    delete ctx.session.waitingForProductId;
+  }
+}
+
+// Commande d'annulation
+async function cancelProductAction(ctx) {
+  if (ctx.session && ctx.session.waitingForProductId) {
+    delete ctx.session.waitingForProductId;
+    await ctx.reply('✅ Action annulée.');
+  }
+}
+
 // Ventes aujourd'hui
 async function showSalesToday(ctx) {
   try {
@@ -359,5 +471,11 @@ module.exports = {
   showProductManagement,
   showSalesToday,
   showActiveProducts,
-  showOrderStatuses
+  showOrderStatuses,
+  // === AJOUT DES NOUVELLES FONCTIONS ===
+  disableProduct,
+  enableProduct,
+  deleteProduct,
+  handleProductIdInput,
+  cancelProductAction
 };
