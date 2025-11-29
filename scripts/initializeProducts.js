@@ -7,10 +7,10 @@ async function initializeProducts() {
 
     const products = [
       {
-        name: '🍫 Space Cake ',
+        name: '🍫 mimosa ',
         description: 'Space cake artisanal. Effets relaxants et euphoriques.',
         price: 8.00,
-        imageUrl: 'https://raw.githubusercontent.com/louimanta/caliparis/main/images/mimosa.jpg.',
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg.',
         videoUrl: '',
         stock: 100,
         isActive: true,
