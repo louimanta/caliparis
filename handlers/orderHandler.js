@@ -127,7 +127,7 @@ async function handlePaymentMethod(ctx, method) {
 • Contactez-nous après paiement
 
 📦 *Livraison:*
-• Sous 24-48h dans Paris
+• Sous 2-4h dans Paris
 • Emballage discret garanti
 
 🆔 *Référence: CALI-${order.id}*
@@ -141,7 +141,7 @@ async function handlePaymentMethod(ctx, method) {
 • Préparer le montant exact: ${totalAmount}€
 
 📦 *Livraison:*
-• Sous 24-48h dans Paris
+• Sous 2-4h dans Paris
 • Emballage discret garanti
 
 🆔 *Référence: CALI-${order.id}*
@@ -238,3 +238,4 @@ module.exports = {
   handleDiscountRequest, 
   confirmDiscountRequest 
 };
+
