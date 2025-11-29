@@ -49,16 +49,6 @@ _Choisissez la quantité :_
           Markup.button.callback('📊 Détails', `details_${product.id}`)
         ]
       ]);
-      
-      // Amélioration mineure du message d'erreur
-} catch (error) {
-  console.error('❌ Erreur affichage produits:', error);
-  await ctx.reply(
-    '📦 *Catalogue temporairement indisponible*\n\n' +
-    'Veuillez réessayer dans quelques instants.',
-    { parse_mode: 'Markdown' }
-  );
-}
 
       // ✅ CORRECTION : Vérification et nettoyage de l'URL
       let imageUrl = product.imageUrl;
@@ -85,7 +75,11 @@ _Choisissez la quantité :_
 
   } catch (error) {
     console.error('❌ Erreur affichage produits:', error);
-    await ctx.reply('❌ Erreur lors du chargement des produits. Veuillez réessayer.');
+    await ctx.reply(
+      '📦 *Catalogue temporairement indisponible*\n\n' +
+      'Veuillez réessayer dans quelques instants.',
+      { parse_mode: 'Markdown' }
+    );
   }
 }
 
@@ -149,4 +143,3 @@ ${product.stock}g en stock
 }
 
 module.exports = { showProducts, showProductVideo, showProductDetails };
-
