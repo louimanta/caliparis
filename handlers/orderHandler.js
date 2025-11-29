@@ -84,7 +84,7 @@ async function handlePaymentMethod(ctx, method) {
       deliveryAddress: customer.deliveryAddress || 'À confirmer'
     });
 
-    console.log(`📋 Commande créée: #${order.id}, Montant: ${totalAmount}€`);
+    console.log(`🤝Merci pour votre commande📋 Commande créée: #${order.id}, Montant: ${totalAmount}€`);
 
     // Créer les order items
     for (const item of cartItems) {
@@ -238,4 +238,5 @@ module.exports = {
   handleDiscountRequest, 
   confirmDiscountRequest 
 };
+
 
