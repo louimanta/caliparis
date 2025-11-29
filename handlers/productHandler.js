@@ -1,7 +1,17 @@
+// productHandler.js - Version corrigée
 const { Markup } = require('telegraf');
 const { Product } = require('../models');
 const { Op } = require('sequelize');
-const { safeDbOperation } = require('./cartHandler');
+
+// Fonction utilitaire pour les opérations DB sécurisées
+async function safeDbOperation(operation, fallback = null) {
+  try {
+    return await operation();
+  } catch (error) {
+    console.error('❌ Erreur DB:', error);
+    return fallback;
+  }
+}
 
 async function showProducts(ctx) {
   try {
@@ -50,19 +60,37 @@ _Choisissez la quantité :_
         ]
       ]);
 
-      // ✅ CORRECTION : Vérification et nettoyage de l'URL
+      // Vérification et nettoyage de l'URL de l'image
       let imageUrl = product.imageUrl;
-      if (imageUrl && imageUrl.endsWith('.jpg.')) {
-        imageUrl = imageUrl.replace('.jpg.', '.jpg');
-      }
-
       if (imageUrl) {
-        await ctx.replyWithPhoto(imageUrl, {
-          caption: message,
-          parse_mode: 'Markdown',
-          ...keyboard
-        });
+        // Nettoyer l'URL
+        imageUrl = imageUrl.replace('.jpg.', '.jpg').trim();
+        
+        // Vérifier si l'URL est valide
+        if (imageUrl.startsWith('http') && (imageUrl.endsWith('.jpg') || imageUrl.endsWith('.png') || imageUrl.endsWith('.jpeg'))) {
+          try {
+            await ctx.replyWithPhoto(imageUrl, {
+              caption: message,
+              parse_mode: 'Markdown',
+              ...keyboard
+            });
+          } catch (photoError) {
+            console.error(`❌ Erreur photo pour ${product.name}:`, photoError.message);
+            // Fallback: envoyer sans photo
+            await ctx.reply(message, {
+              parse_mode: 'Markdown',
+              ...keyboard
+            });
+          }
+        } else {
+          // URL invalide, envoyer sans photo
+          await ctx.reply(message, {
+            parse_mode: 'Markdown',
+            ...keyboard
+          });
+        }
       } else {
+        // Pas d'URL d'image, envoyer sans photo
         await ctx.reply(message, {
           parse_mode: 'Markdown',
           ...keyboard
@@ -75,11 +103,7 @@ _Choisissez la quantité :_
 
   } catch (error) {
     console.error('❌ Erreur affichage produits:', error);
-    await ctx.reply(
-      '📦 *Catalogue temporairement indisponible*\n\n' +
-      'Veuillez réessayer dans quelques instants.',
-      { parse_mode: 'Markdown' }
-    );
+    await ctx.reply('❌ Erreur lors du chargement des produits. Veuillez réessayer.');
   }
 }
 
