@@ -1,4 +1,3 @@
-
 // scripts/initializeProducts.js
 const { Product } = require('../models');
 
@@ -51,31 +50,23 @@ async function initializeProducts() {
         category: 'huiles',
         quality: 'Full Spectrum'
       },
-      {
-        name: '✨ Cristaux CBD - 1g',
-        description: 'Cristaux de CBD purs à 99%. Parfaits pour la fabrication de vos propres produits.',
-        price: 20.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/cristaux-cbd.jpg',
-        videoUrl: '',
-        stock: 40,
-        isActive: true,
-        category: 'cristaux',
-        quality: '99% Pur'
-      }
-    ];
+    
+
+    // === CORRECTION : Vérifier d'abord si l'initialisation est nécessaire ===
+    const existingCount = await Product.count();
+    console.log(`📊 ${existingCount} produits existants dans la base`);
+    
+    // Si des produits existent déjà, ne pas réinitialiser
+    if (existingCount > 0) {
+      console.log('✅ Produits déjà initialisés, pas de création');
+      return;
+    }
 
     for (const productData of products) {
       const [product, created] = await Product.findOrCreate({
         where: { name: productData.name },
         defaults: productData
       });
-
-      // Forcer la mise à jour si l'URL est incorrecte
-      if (!created && product.imageUrl.endsWith('.jpg.')) {
-        product.imageUrl = productData.imageUrl;
-        await product.save();
-        console.log(`🔧 URL corrigée pour: ${productData.name}`);
-      }
 
       if (created) {
         console.log(`✅ Produit créé: ${productData.name}`);
