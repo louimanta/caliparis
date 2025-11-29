@@ -121,7 +121,7 @@ bot.hears('📞 Contact', (ctx) => {
     '📞 *Contact CaliParis*\n\n' +
     'Pour toute question:\n' +
     '• Via ce bot\n' +
-    '• Réponse sous 24h\n\n' +
+    '• Réponse sous 4h\n\n' +
     '🚚 Livraison discrète Paris et banlieue',
     { parse_mode: 'Markdown' }
   );
@@ -130,7 +130,7 @@ bot.hears('ℹ️ Informations', (ctx) => {
   ctx.reply(
     'ℹ️ *Informations CaliParis*\n\n' +
     '🌟 Qualité Premium\n' +
-    '📦 Livraison 24h-48h\n' +
+    '📦 Livraison 2h-4h\n' +
     '🔒 Emballage discret\n' +
     '💳 Paiement sécurisé',
     { parse_mode: 'Markdown' }
@@ -284,5 +284,6 @@ process.once('SIGTERM', () => {
 bot.secretPathComponent = () => 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
 
 module.exports = bot;
+
 
 
