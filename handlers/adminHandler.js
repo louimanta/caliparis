@@ -464,6 +464,8 @@ async function showActiveProducts(ctx) {
 }
 
 module.exports = {
+// Dans votre adminHandler.js existant, vérifiez que vous avez bien :
+module.exports = {
   handleAdminCommands,
   showAdminStats,
   showPendingOrders,
@@ -472,7 +474,7 @@ module.exports = {
   showSalesToday,
   showActiveProducts,
   showOrderStatuses,
-  // === AJOUT DES NOUVELLES FONCTIONS ===
+  // === CES FONCTIONS DOIVENT ÊTRE PRÉSENTES ===
   disableProduct,
   enableProduct,
   deleteProduct,
