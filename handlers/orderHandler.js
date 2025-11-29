@@ -122,9 +122,8 @@ async function handlePaymentMethod(ctx, method) {
 ✅ *Commande #${order.id} créée!*
 
 💳 *Paiement Crypto:*
-• Envoyez ${totalAmount}€ en BTC ou ETH
-• Adresse: **1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa**
-• Contactez-nous après paiement
+• Envoyez ${totalAmount}€ en BTC ou ETH,USDC,USDT
+• Adresse: **En privé** Contact @Caliparisofficial
 
 📦 *Livraison:*
 • Sous 2-4h dans Paris
@@ -238,5 +237,6 @@ module.exports = {
   handleDiscountRequest, 
   confirmDiscountRequest 
 };
+
 
 
