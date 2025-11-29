@@ -6,6 +6,14 @@ async function handleStart(ctx) {
     
     console.log(`🚀 Start command - User: ${userId} (${userName})`);
 
+    // ✅ CORRECTION : Initialiser la session si elle n'existe pas
+    if (!ctx.session) {
+      ctx.session = {};
+    }
+    if (!ctx.session.cart) {
+      ctx.session.cart = [];
+    }
+
     const welcomeMessage = 
       `🌟 *BIENVENUE CHEZ CALIPARIS* 🌟\n\n` +
       `Salut ${userName} ! 👋\n\n` +
@@ -32,16 +40,12 @@ async function handleStart(ctx) {
       }
     });
 
-    // Initialiser le panier si nécessaire
-    if (!ctx.session.cart) {
-      ctx.session.cart = [];
-      ctx.session = { ...ctx.session };
-    }
-
   } catch (error) {
     console.error('❌ Erreur dans handleStart:', error);
     await ctx.reply(
-      '❌ Une erreur est survenue lors du démarrage.\n\nVeuillez réessayer.',
+      '🔄 *Bienvenue chez CaliParis !* 🌟\n\n' +
+      'Notre service est momentanément indisponible.\n\n' +
+      'Veuillez réessayer dans quelques instants.',
       { parse_mode: 'Markdown' }
     );
   }
