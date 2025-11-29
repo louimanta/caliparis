@@ -67,7 +67,11 @@ const adminHandler = loadModule('./handlers/adminHandler', {
   handleAdminCommands: fallbackHandlers.handleAdminCommands,
   showAdminStats: (ctx) => ctx.reply('📊 Statistiques'),
   showPendingOrders: (ctx) => ctx.reply('📦 Commandes en attente'),
-  handleOrderAction: (ctx) => ctx.answerCbQuery('✅ Action effectuée')
+  handleOrderAction: (ctx) => ctx.answerCbQuery('✅ Action effectuée'),
+  showProductManagement: (ctx) => ctx.reply('🛍️ Gestion produits'),
+  showSalesToday: (ctx) => ctx.reply('📈 Ventes aujourd\'hui'),
+  showActiveProducts: (ctx) => ctx.reply('✅ Produits actifs'),
+  showOrderStatuses: (ctx) => ctx.reply('🔍 Statuts commandes')
 });
 
 // Chargement sécurisé des middlewares
@@ -215,59 +219,24 @@ bot.action('confirm_discount_request', async (ctx) => {
 // Callbacks admin
 bot.action('admin_stats', authMiddleware.isAdmin, adminHandler.showAdminStats);
 bot.action('admin_pending_orders', authMiddleware.isAdmin, adminHandler.showPendingOrders);
+bot.action('admin_products', authMiddleware.isAdmin, adminHandler.showProductManagement);
+bot.action('admin_sales_today', authMiddleware.isAdmin, adminHandler.showSalesToday);
+bot.action('admin_active_products', authMiddleware.isAdmin, adminHandler.showActiveProducts);
+bot.action('admin_show_statuses', authMiddleware.isAdmin, adminHandler.showOrderStatuses);
+bot.action('back_to_admin', authMiddleware.isAdmin, adminHandler.handleAdminCommands);
+
 bot.action(/admin_process_(\d+)/, authMiddleware.isAdmin, (ctx) => 
   adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'process'));
 bot.action(/admin_contact_(\d+)/, authMiddleware.isAdmin, (ctx) => 
   adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'contact'));
+bot.action(/admin_cancel_(\d+)/, authMiddleware.isAdmin, (ctx) => 
+  adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'cancel'));
 
 // Gestion des erreurs
 bot.catch((err, ctx) => {
   console.error('❌ Erreur bot:', err);
   ctx.reply('❌ Une erreur est survenue. Veuillez réessayer.');
 });
-
-// Démarrage résilient du bot
-function startBot() {
-  try {
-    console.log('🤖 Lancement du bot...');
-    
-    if (sequelize) {
-      // Essayer avec la base de données
-      sequelize.sync()
-        .then(() => {
-          console.log('✅ Base de données synchronisée');
-          bot.launch();
-          console.log('🎉 Bot CaliParis démarré avec base de données!');
-        })
-        .catch(dbError => {
-          console.log('❌ Erreur DB, démarrage sans:', dbError.message);
-          bot.launch();
-          console.log('🎉 Bot CaliParis démarré sans base de données!');
-        });
-    } else {
-      // Démarrage sans base de données
-      bot.launch();
-      console.log('🎉 Bot CaliParis démarré en mode standalone!');
-    }
-  } catch (error) {
-    console.error('❌ Erreur démarrage:', error);
-    // Dernière tentative
-    try {
-      bot.launch();
-      console.log('🎉 Bot démarré en mode de secours!');
-    } catch (finalError) {
-      console.error('💥 Échec critique:', finalError);
-    }
-  }
-}
-
-// Démarrer après un délai
-setTimeout(startBot, 2000);
-
-// Ajoutez cette méthode pour le webhook
-bot.secretPathComponent = () => {
-  return 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
-};
 
 // Gestion propre de l'arrêt
 process.once('SIGINT', () => {
@@ -284,6 +253,3 @@ process.once('SIGTERM', () => {
 bot.secretPathComponent = () => 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
 
 module.exports = bot;
-
-
-
