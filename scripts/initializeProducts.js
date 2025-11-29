@@ -7,10 +7,10 @@ async function initializeProducts() {
 
     const products = [
       {
-        name: '🍫 Space Cake - 25mg THC',
-        description: 'Space cake artisanal avec 25mg de THC par portion. Effets relaxants et euphoriques.',
+        name: '🍫 Space Cake ',
+        description: 'Space cake artisanal. Effets relaxants et euphoriques.',
         price: 8.00,
-        imageUrl: 'https://i.imgur.com/space-cake.jpg',
+        imageUrl: './images/mimosa.jpg.',
         videoUrl: '',
         stock: 100,
         isActive: true,
