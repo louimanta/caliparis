@@ -463,7 +463,7 @@ async function showActiveProducts(ctx) {
   }
 }
 
-module.exports = {
+
 // Dans votre adminHandler.js existant, vérifiez que vous avez bien :
 module.exports = {
   handleAdminCommands,
@@ -481,3 +481,4 @@ module.exports = {
   handleProductIdInput,
   cancelProductAction
 };
+
