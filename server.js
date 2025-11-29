@@ -11,7 +11,7 @@ app.use(express.urlencoded({ extended: true }));
 let dbConnected = false;
 let botStarted = false;
 
-// ✅ AJOUTEZ cette fonction
+// Fonction d'initialisation de la base de données
 async function initializeDatabase() {
   try {
     console.log('🔄 Initialisation de la base de données...');
@@ -29,6 +29,30 @@ async function initializeDatabase() {
   }
 }
 
+// Route pour corriger les URLs d'images
+app.get('/fix-urls', async (req, res) => {
+  try {
+    const { Product } = require('./models');
+    const products = await Product.findAll();
+    
+    let fixed = 0;
+    for (let product of products) {
+      if (product.imageUrl && product.imageUrl.includes('.jpg.')) {
+        const oldUrl = product.imageUrl;
+        product.imageUrl = product.imageUrl.replace('.jpg.', '.jpg');
+        await product.save();
+        console.log(`✅ Corrigé: ${oldUrl} → ${product.imageUrl}`);
+        fixed++;
+      }
+    }
+    
+    res.json({ fixed: fixed, message: 'URLs corrigées' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Health check endpoint
 app.get('/health', async (req, res) => {
   try {
     let dbStatus = false;
@@ -55,6 +79,7 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Endpoint pour forcer la reconnexion DB
 app.post('/reconnect-db', async (req, res) => {
   try {
     console.log('🔄 Reconnexion manuelle à la base de données...');
@@ -73,6 +98,7 @@ app.post('/reconnect-db', async (req, res) => {
   }
 });
 
+// Route principale
 app.get('/', (req, res) => {
   res.json({
     service: 'CaliParis Bot',
@@ -82,16 +108,19 @@ app.get('/', (req, res) => {
   });
 });
 
+// Webhook pour production
 if (process.env.NODE_ENV === 'production') {
   const webhookPath = `/webhook/${bot.secretPathComponent()}`;
   app.use(bot.webhookCallback(webhookPath));
   console.log(`🌐 Webhook configuré sur: ${webhookPath}`);
 }
 
+// Route 404
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
 });
 
+// Gestionnaire d'erreurs global
 app.use((error, req, res, next) => {
   console.error('❌ Erreur serveur:', error);
   res.status(500).json({ 
@@ -100,6 +129,7 @@ app.use((error, req, res, next) => {
   });
 });
 
+// Fonction de démarrage principale
 async function startApplication() {
   console.log('🚀 Démarrage de CaliParis Bot...');
   console.log('🔍 Vérification des variables d\'environnement:');
@@ -117,11 +147,11 @@ async function startApplication() {
     console.error('❌ DATABASE_URL manquante - Mode dégradé forcé');
     dbConnected = false;
   } else {
-    // ✅ CHANGEZ cette ligne seulement
     console.log('🔄 Connexion à la base de données PostgreSQL...');
-    dbConnected = await initializeDatabase(); // ← CHANGÉ ICI
+    dbConnected = await initializeDatabase();
   }
 
+  // Démarrer le serveur web
   app.listen(PORT, () => {
     console.log(`🚀 Serveur démarré sur le port ${PORT}`);
     console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
@@ -133,6 +163,7 @@ async function startApplication() {
     }
   });
 
+  // Démarrer le bot
   try {
     if (process.env.NODE_ENV === 'production') {
       botStarted = true;
@@ -147,6 +178,7 @@ async function startApplication() {
   }
 }
 
+// Gestion propre de l'arrêt
 process.once('SIGINT', () => {
   console.log('🛑 Arrêt du bot...');
   bot.stop('SIGINT');
@@ -159,6 +191,7 @@ process.once('SIGTERM', () => {
   process.exit(0);
 });
 
+// Démarrer l'application
 startApplication();
 
 module.exports = app;
