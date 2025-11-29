@@ -19,10 +19,10 @@ async function initializeProducts() {
         quality: 'Premium'
       },
       {
-        name: '💎 Résine Premium - 2g',
-        description: 'Résine de haute qualité, riche en terpènes et CBD. Parfait pour la détente.',
+        name: '💎Frozen Triangle Kush ',
+        description: 'Résine de haute qualité, riche en terpènes. Parfait pour la détente.',
         price: 25.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/resine-premium.jpg',
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Frozen.jpg',
         videoUrl: '',
         stock: 50,
         isActive: true,
@@ -30,10 +30,10 @@ async function initializeProducts() {
         quality: 'Premium'
       },
       {
-        name: '🌿 Fleur CBD - 1g',
+        name: '🌿 Cali Kush ',
         description: 'Fleur de CBD biologique, arômes fruités et effets relaxants sans psychoactifs.',
         price: 12.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/fleur-cbd.jpg',
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Cali.jpg',
         videoUrl: '',
         stock: 80,
         isActive: true,
@@ -41,10 +41,10 @@ async function initializeProducts() {
         quality: 'Bio'
       },
       {
-        name: '🍯 Huile CBD - 10ml',
-        description: 'Huile de CBD full spectrum, 10% de concentration. Idéale pour le bien-être quotidien.',
+        name: '🍯 Birthday Cake ',
+        description: 'resine full spectrum, 10% de concentration. Idéale pour le bien-être quotidien.',
         price: 35.00,
-        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/huile-cbd.jpg',
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Birthday.jpg',
         videoUrl: '',
         stock: 30,
         isActive: true,
