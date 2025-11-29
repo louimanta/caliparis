@@ -238,6 +238,41 @@ bot.catch((err, ctx) => {
   ctx.reply('❌ Une erreur est survenue. Veuillez réessayer.');
 });
 
+// === CORRECTION : AJOUTEZ CES LIGNES ===
+
+// Démarrage résilient du bot
+async function startBot() {
+  try {
+    console.log('🤖 Lancement du bot...');
+    
+    if (sequelize) {
+      // Essayer avec la base de données
+      await sequelize.sync();
+      console.log('✅ Base de données synchronisée');
+    }
+    
+    // Démarrer le bot
+    await bot.launch();
+    console.log('🎉 Bot CaliParis démarré avec succès!');
+    
+  } catch (error) {
+    console.error('❌ Erreur démarrage:', error);
+    
+    // Dernière tentative sans DB
+    try {
+      await bot.launch();
+      console.log('🎉 Bot démarré en mode de secours!');
+    } catch (finalError) {
+      console.error('💥 Échec critique:', finalError);
+    }
+  }
+}
+
+// Démarrer le bot après un court délai
+setTimeout(startBot, 1000);
+
+// === FIN DE LA CORRECTION ===
+
 // Gestion propre de l'arrêt
 process.once('SIGINT', () => {
   console.log('🛑 Arrêt du bot...');
