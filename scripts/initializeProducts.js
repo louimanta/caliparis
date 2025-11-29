@@ -10,7 +10,7 @@ async function initializeProducts() {
         name: '🍫 Space Cake ',
         description: 'Space cake artisanal. Effets relaxants et euphoriques.',
         price: 8.00,
-        imageUrl: 'caliparis/images/mimosa.jpg.',
+        imageUrl: 'https://github.com/louimanta/caliparis/blob/main/images/mimosa.jpg.',
         videoUrl: '',
         stock: 100,
         isActive: true,
