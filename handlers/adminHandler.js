@@ -28,7 +28,8 @@ async function handleAdminCommands(ctx) {
           [Markup.button.callback('📊 Statistiques', 'admin_stats')],
           [Markup.button.callback('📦 Commandes en attente', 'admin_pending_orders')],
           [Markup.button.callback('🛍️ Gérer produits', 'admin_products')],
-          [Markup.button.callback('📈 Ventes aujourd\'hui', 'admin_sales_today')]
+          [Markup.button.callback('📈 Ventes aujourd\'hui', 'admin_sales_today')],
+          [Markup.button.callback('🔍 Voir statuts', 'admin_show_statuses')]
         ])
       }
     );
@@ -115,7 +116,7 @@ ${order.deliveryAddress || 'Non spécifiée'}
         ...Markup.inlineKeyboard([
           [
             Markup.button.callback('✅ Traitée', `admin_process_${order.id}`),
-            Markup.button.callback('📞 Contacté', `admin_contact_${order.id}`)
+            Markup.button.callback('📞 Contact client', `admin_contact_${order.id}`)
           ],
           [Markup.button.callback('🚫 Annuler', `admin_cancel_${order.id}`)]
         ])
@@ -132,7 +133,40 @@ ${order.deliveryAddress || 'Non spécifiée'}
   }
 }
 
-// Gestion des actions admin sur les commandes
+// Fonction pour découvrir les statuts valides
+async function showOrderStatuses(ctx) {
+  try {
+    // Récupérer tous les statuts uniques existants
+    const orders = await safeDbOperation(() => Order.findAll({
+      attributes: ['status'],
+      group: ['status'],
+      raw: true
+    }), []);
+
+    const statuses = orders.map(o => o.status);
+    
+    const message = `
+🔍 *Statuts de commande disponibles:*
+
+${statuses.length > 0 ? statuses.map(s => `• ${s}`).join('\n') : 'Aucun statut trouvé'}
+
+💡 *Utilisez ces statuts dans le code:*
+- pending: En attente
+- processing: En traitement  
+- completed: Terminée
+- cancelled: Annulée
+- delivered: Livrée
+    `.trim();
+
+    await ctx.reply(message, { parse_mode: 'Markdown' });
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur statuts:', error);
+    await ctx.answerCbQuery('❌ Erreur récupération statuts');
+  }
+}
+
+// Gestion des actions admin sur les commandes - VERSION CORRIGÉE
 async function handleOrderAction(ctx, orderId, action) {
   try {
     const order = await safeDbOperation(() => Order.findByPk(orderId, {
@@ -145,27 +179,30 @@ async function handleOrderAction(ctx, orderId, action) {
 
     let newStatus, message;
     
+    // UTILISER LES STATUTS VALIDES DE VOTRE ENUM POSTGRESQL
     switch (action) {
       case 'process':
-        newStatus = 'confirmed';
+        newStatus = 'completed'; // Statut valide
         message = '✅ Commande marquée comme traitée';
         break;
       case 'contact':
-        newStatus = 'contacted';
+        newStatus = 'processing'; // Statut valide pour "contacté"
         message = '✅ Commande marquée comme contactée';
         break;
       case 'cancel':
-        newStatus = 'cancelled';
+        newStatus = 'cancelled'; // Statut valide
         message = '🚫 Commande annulée';
         break;
       default:
         return ctx.answerCbQuery('❌ Action non reconnue');
     }
 
+    console.log(`🔄 Mise à jour commande #${orderId}: ${order.status} → ${newStatus}`);
+
     await order.update({ status: newStatus });
     await ctx.answerCbQuery(message);
 
-    // Notifier le client (version simplifiée sans notificationService)
+    // Notifier le client
     try {
       const customerMessage = `
 🔄 *Mise à jour de votre commande #${order.id}*
@@ -176,7 +213,6 @@ async function handleOrderAction(ctx, orderId, action) {
 Merci pour votre confiance! 🌿
       `.trim();
 
-      // Envoyer au client si Telegram ID disponible
       if (order.Customer && order.Customer.telegramId) {
         await ctx.telegram.sendMessage(order.Customer.telegramId, customerMessage, {
           parse_mode: 'Markdown'
@@ -188,7 +224,13 @@ Merci pour votre confiance! 🌿
 
   } catch (error) {
     console.error('❌ Erreur action admin:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de l\'action');
+    
+    // Message d'erreur plus détaillé
+    if (error.name === 'SequelizeDatabaseError') {
+      await ctx.answerCbQuery('❌ Erreur base de données - Statut invalide');
+    } else {
+      await ctx.answerCbQuery('❌ Erreur lors de l\'action');
+    }
   }
 }
 
@@ -196,15 +238,17 @@ Merci pour votre confiance! 🌿
 function getStatusText(status) {
   const statusMap = {
     'pending': '⏳ En attente',
-    'confirmed': '✅ Confirmée',
-    'contacted': '📞 Contacté',
+    'processing': '📞 En traitement',
+    'completed': '✅ Terminée',
     'cancelled': '🚫 Annulée',
-    'delivered': '📦 Livrée'
+    'delivered': '📦 Livrée',
+    'confirmed': '✅ Confirmée',
+    'contacted': '📞 Contacté'
   };
   return statusMap[status] || status;
 }
 
-// Gestion des produits (à ajouter)
+// Gestion des produits
 async function showProductManagement(ctx) {
   try {
     const products = await safeDbOperation(() => Product.findAll({
@@ -254,7 +298,7 @@ async function showSalesToday(ctx) {
         createdAt: {
           [Op.between]: [today, tomorrow]
         },
-        status: ['confirmed', 'delivered']
+        status: ['completed', 'delivered'] // Commandes terminées ou livrées
       },
       include: [OrderItem]
     }), []);
@@ -266,7 +310,7 @@ async function showSalesToday(ctx) {
 📈 *Ventes Aujourd'hui*
 
 📦 Commandes: ${totalOrders}
-💰 Chiffre d'affaires: ${totalSales}€
+💰 Chiffre d'affaires: ${totalSales.toFixed(2)}€
 🕒 Période: ${today.toLocaleDateString('fr-FR')}
 
 ${totalOrders > 0 ? '🎉 Bonne journée de vente!' : '📊 Aucune vente aujourd\'hui'}
@@ -280,11 +324,40 @@ ${totalOrders > 0 ? '🎉 Bonne journée de vente!' : '📊 Aucune vente aujourd
   }
 }
 
+// Produits actifs
+async function showActiveProducts(ctx) {
+  try {
+    const products = await safeDbOperation(() => Product.findAll({
+      where: { isActive: true },
+      order: [['name', 'ASC']]
+    }), []);
+
+    if (!products || products.length === 0) {
+      return ctx.reply('📦 Aucun produit actif.');
+    }
+
+    let message = '✅ *Produits Actifs*\n\n';
+    products.forEach(product => {
+      message += `🛍️ ${product.name}\n`;
+      message += `💰 ${product.price}€/g | Stock: ${product.stock}g\n`;
+      message += `📝 ${product.description.substring(0, 50)}...\n\n`;
+    });
+
+    await ctx.reply(message, { parse_mode: 'Markdown' });
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur produits actifs:', error);
+    await ctx.answerCbQuery('❌ Erreur chargement produits');
+  }
+}
+
 module.exports = {
   handleAdminCommands,
   showAdminStats,
   showPendingOrders,
   handleOrderAction,
   showProductManagement,
-  showSalesToday
+  showSalesToday,
+  showActiveProducts,
+  showOrderStatuses
 };
