@@ -50,8 +50,14 @@ _Choisissez la quantité :_
         ]
       ]);
 
-      if (product.imageUrl) {
-        await ctx.replyWithPhoto(product.imageUrl, {
+      // ✅ CORRECTION : Vérification et nettoyage de l'URL
+      let imageUrl = product.imageUrl;
+      if (imageUrl && imageUrl.endsWith('.jpg.')) {
+        imageUrl = imageUrl.replace('.jpg.', '.jpg');
+      }
+
+      if (imageUrl) {
+        await ctx.replyWithPhoto(imageUrl, {
           caption: message,
           parse_mode: 'Markdown',
           ...keyboard
@@ -104,6 +110,7 @@ async function showProductDetails(ctx, productId) {
 
 📊 *Informations techniques:*
 • Type: ${product.category || 'Non spécifié'}
+• Qualité: ${product.quality || 'Standard'}
 
 📝 *Description:*
 ${product.description}
