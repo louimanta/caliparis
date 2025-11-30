@@ -51,7 +51,7 @@ async function initializeProducts() {
         description: 'Produit premium de haute qualité. Texture unique et arômes exceptionnels.',
         price: 320.00,
         imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Runtz.jpg',
-        videoUrl: '',
+        videoUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Runtz.mp4',
         isActive: true,
         category: 'la mousse',
         quality: 'Premium'
