@@ -93,7 +93,14 @@ const adminHandler = loadModule('./handlers/adminHandler', {
   enableProduct: (ctx) => ctx.reply('✅ Activer produit'),
   deleteProduct: (ctx) => ctx.reply('🗑️ Supprimer produit'),
   handleProductIdInput: (ctx) => ctx.reply('🔢 Traitement ID produit'),
-  cancelProductAction: (ctx) => ctx.reply('✅ Action annulée')
+  cancelProductAction: (ctx) => ctx.reply('✅ Action annulée'),
+  // === AJOUT DES FALLBACKS POUR L'AJOUT DE PRODUIT ===
+  addProduct: (ctx) => ctx.reply('🆕 Ajouter un produit'),
+  handleProductCreation: (ctx) => ctx.reply('📝 Création produit'),
+  handleProductPhoto: (ctx) => ctx.reply('🖼️ Gestion photo'),
+  handleProductVideo: (ctx) => ctx.reply('🎬 Gestion vidéo'),
+  handleProductCategory: (ctx) => ctx.reply('🎯 Gestion catégorie'),
+  handleProductQuality: (ctx) => ctx.reply('⭐ Gestion qualité')
 });
 
 // Chargement sécurisé des middlewares
@@ -196,7 +203,37 @@ bot.on('text', async (ctx, next) => {
     return;
   }
   
+  // === AJOUT: Gestion de la création de produit ===
+  if (ctx.session && ctx.session.creatingProduct) {
+    await adminHandler.handleProductCreation(ctx);
+    return;
+  }
+  
   return next();
+});
+
+// === AJOUT: Handlers pour les médias ===
+bot.on('photo', async (ctx) => {
+  if (ctx.session && ctx.session.creatingProduct && ctx.session.creationStep === 'photo') {
+    await adminHandler.handleProductPhoto(ctx);
+  }
+});
+
+bot.on('video', async (ctx) => {
+  if (ctx.session && ctx.session.creatingProduct && ctx.session.creationStep === 'video') {
+    await adminHandler.handleProductVideo(ctx);
+  }
+});
+
+// Gestion de la commande /skip
+bot.hears('/skip', async (ctx) => {
+  if (ctx.session && ctx.session.creatingProduct) {
+    if (ctx.session.creationStep === 'photo') {
+      await adminHandler.handleProductPhoto(ctx);
+    } else if (ctx.session.creationStep === 'video') {
+      await adminHandler.handleProductVideo(ctx);
+    }
+  }
 });
 
 // Commandes admin
@@ -328,6 +365,26 @@ bot.action('admin_enable_product', authMiddleware.isAdmin, async (ctx) => {
 bot.action('admin_delete_product', authMiddleware.isAdmin, async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Suppression produit...');
   await adminHandler.deleteProduct(ctx);
+});
+
+// === AJOUT: Callbacks pour l'ajout de produit ===
+bot.action('admin_add_product', authMiddleware.isAdmin, async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🔄 Création produit...');
+  await adminHandler.addProduct(ctx);
+});
+
+// Gestion des catégories pour nouveau produit
+bot.action(/category_(.+)_new/, authMiddleware.isAdmin, async (ctx) => {
+  const category = ctx.match[1];
+  await safeAnswerCbQuery(ctx, '🎯 Catégorie sélectionnée');
+  await adminHandler.handleProductCategory(ctx, category);
+});
+
+// Gestion de la qualité pour nouveau produit
+bot.action(/quality_(.+)_new/, authMiddleware.isAdmin, async (ctx) => {
+  const quality = ctx.match[1];
+  await safeAnswerCbQuery(ctx, '⭐ Qualité sélectionnée');
+  await adminHandler.handleProductQuality(ctx, quality);
 });
 
 bot.action('back_to_admin', authMiddleware.isAdmin, async (ctx) => {
