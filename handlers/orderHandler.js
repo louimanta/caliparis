@@ -84,7 +84,7 @@ async function handlePaymentMethod(ctx, method) {
       deliveryAddress: customer.deliveryAddress || 'À confirmer'
     });
 
-    console.log(`🤝Merci pour votre commande📋 Commande créée: #${order.id}, Montant: ${totalAmount}€`);
+    console.log(`📋 Commande créée: #${order.id}, Montant: ${totalAmount}€`);
 
     // Créer les order items
     for (const item of cartItems) {
@@ -96,13 +96,8 @@ async function handlePaymentMethod(ctx, method) {
         totalPrice: item.totalPrice
       });
 
-      // Mettre à jour le stock
-      const product = await Product.findByPk(item.productId);
-      if (product) {
-        product.stock -= item.quantity;
-        await product.save();
-        console.log(`📦 Stock mis à jour: ${product.name} -${item.quantity}g`);
-      }
+      // ✅ SUPPRIMER LA MISE À JOUR DU STOCK POUR TOUS LES PRODUITS
+      // Plus de gestion de stock, même pour La Mousse
     }
 
     // ✅ Vider le panier APRÈS avoir utilisé les données
@@ -237,6 +232,3 @@ module.exports = {
   handleDiscountRequest, 
   confirmDiscountRequest 
 };
-
-
-
