@@ -1,4 +1,5 @@
 const { Cart, Product } = require('../models');
+const { hasMinimumPurchase, getMinimumQuantity } = require('./productHandler');
 
 // Fonction sécurisée pour accéder à la base de données AVEC LOGS
 async function safeDbOperation(operation, fallbackValue = null) {
@@ -26,9 +27,10 @@ async function handleAddToCart(ctx, productId, quantity) {
       return ctx.answerCbQuery('❌ Produit non trouvé');
     }
 
-    if (product.stock < quantity) {
-      console.log(`❌ Stock insuffisant: ${product.stock} < ${quantity}`);
-      return ctx.answerCbQuery('❌ Stock insuffisant');
+    // VÉRIFICATION ACHAT MINIMUM UNIQUEMENT POUR LA MOUSSE
+    if (hasMinimumPurchase(product) && quantity < getMinimumQuantity(product)) {
+      console.log(`❌ Quantité insuffisante pour La Mousse: ${quantity} < ${getMinimumQuantity(product)}`);
+      return ctx.answerCbQuery(`❌ Achat minimum: ${getMinimumQuantity(product)}g pour ce produit`);
     }
 
     let cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
@@ -102,16 +104,26 @@ async function handleCustomQuantity(ctx, productId) {
   try {
     console.log(`🔢 Demande quantité personnalisée - Produit: ${productId}`);
     
-    await ctx.reply(
-      '🔢 Entrez la quantité souhaitée (en grammes) :\nExemple: 5 pour 5 grammes',
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '❌ Annuler', callback_data: `cancel_custom_${productId}` }]
-          ]
-        }
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (!product) {
+      return ctx.answerCbQuery('❌ Produit non trouvé');
+    }
+
+    let message = '🔢 Entrez la quantité souhaitée (en grammes) :\nExemple: 5 pour 5 grammes';
+    
+    // Message spécifique pour La Mousse
+    if (product.category === 'la mousse') {
+      message = `🔢 *Entrez la quantité souhaitée pour ${product.name}*\n\n⚠️ *Achat minimum: 100g*\n\nExemple: 100 pour 100 grammes`;
+    }
+    
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Annuler', callback_data: `cancel_custom_${productId}` }]
+        ]
       }
-    );
+    });
 
     // Stocker l'attente dans la session
     ctx.session.waitingForCustomQuantity = {
@@ -144,6 +156,14 @@ async function handleCustomQuantityResponse(ctx) {
     if (isNaN(quantity) || quantity <= 0) {
       console.log('❌ Quantité invalide');
       await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
+      return;
+    }
+
+    // Vérification supplémentaire pour La Mousse
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (product && product.category === 'la mousse' && quantity < 100) {
+      await ctx.reply('❌ Achat minimum: 100g pour ce produit');
+      delete ctx.session.waitingForCustomQuantity;
       return;
     }
 
@@ -308,4 +328,3 @@ module.exports = {
   clearCart,
   safeDbOperation
 };
-
