@@ -44,7 +44,6 @@ async function showAdminStats(ctx) {
     const totalOrders = await safeDbOperation(() => Order.count(), 0);
     const pendingOrders = await safeDbOperation(() => Order.count({ where: { status: 'pending' } }), 0);
     const totalProducts = await safeDbOperation(() => Product.count(), 0);
-    const lowStockProducts = await safeDbOperation(() => Product.count({ where: { stock: { [Op.lt]: 10 } } }), 0);
 
     const statsMessage = `
 📊 *Statistiques CaliParis*
@@ -52,7 +51,6 @@ async function showAdminStats(ctx) {
 📦 Commandes totales: ${totalOrders}
 ⏳ Commandes en attente: ${pendingOrders}
 🛍️ Produits actifs: ${totalProducts}
-⚠️ Produits stock faible: ${lowStockProducts}
 
 💎 *Actions rapides:*
 /gestion - Gérer les commandes
@@ -374,7 +372,8 @@ async function handleProductVideo(ctx) {
               [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
               [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
               [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
-              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }]
+              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }],
+              [{ text: '🧼 La Mousse', callback_data: 'category_la mousse_new' }] // AJOUT DE LA NOUVELLE CATÉGORIE
             ]
           }
         }
@@ -393,7 +392,8 @@ async function handleProductVideo(ctx) {
               [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
               [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
               [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
-              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }]
+              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }],
+              [{ text: '🧼 La Mousse', callback_data: 'category_la mousse_new' }] // AJOUT DE LA NOUVELLE CATÉGORIE
             ]
           }
         }
@@ -448,7 +448,6 @@ async function handleProductQuality(ctx, quality) {
       price: newProduct.price,
       imageUrl: imageUrl,
       videoUrl: videoUrl,
-      stock: 0, // Stock à 0 comme demandé
       isActive: true,
       category: newProduct.category,
       quality: quality
@@ -461,11 +460,15 @@ async function handleProductQuality(ctx, quality) {
 📦 ID: ${product.id}
 🍃 Nom: ${product.name}
 📝 Description: ${product.description}
-💰 Prix: ${product.price}€
-📦 Stock: ${product.stock}g
+💰 Prix: ${product.price}€/g
 🎯 Catégorie: ${product.category}
 ⭐ Qualité: ${product.quality}
     `.trim();
+    
+    // Ajouter info spécifique pour La Mousse
+    if (product.category === 'la mousse') {
+      summaryMessage += '\n\n⚠️ *Ce produit a un achat minimum de 100g*';
+    }
     
     // Ajouter info médias
     if (newProduct.photoUrl && newProduct.photoUrl !== 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/default.jpg') {
@@ -479,8 +482,6 @@ async function handleProductQuality(ctx, quality) {
     } else {
       summaryMessage += '\n🎬 Vidéo: ❌ Aucune';
     }
-    
-    summaryMessage += '\n\n💡 *Stock initial: 0g - Pensez à l\'approvisionner*';
     
     // Envoyer le résumé
     await ctx.reply(summaryMessage, { parse_mode: 'Markdown' });
@@ -535,7 +536,14 @@ async function showProductManagement(ctx) {
     let message = '🛍️ *Gestion des Produits*\n\n';
     products.forEach(product => {
       message += `ID: ${product.id} | ${product.isActive ? '✅' : '❌'} ${product.name}\n`;
-      message += `💰 ${product.price}€ | Stock: ${product.stock}g\n\n`;
+      message += `💰 ${product.price}€/g\n`;
+      
+      // Ajouter info achat minimum pour La Mousse
+      if (product.category === 'la mousse') {
+        message += `⚠️ Achat minimum: 100g\n`;
+      }
+      
+      message += `\n`;
     });
 
     const keyboard = Markup.inlineKeyboard([
@@ -725,7 +733,13 @@ async function showActiveProducts(ctx) {
     let message = '✅ *Produits Actifs*\n\n';
     products.forEach(product => {
       message += `🛍️ ${product.name}\n`;
-      message += `💰 ${product.price}€/g | Stock: ${product.stock}g\n`;
+      message += `💰 ${product.price}€/g\n`;
+      
+      // Ajouter info achat minimum pour La Mousse
+      if (product.category === 'la mousse') {
+        message += `⚠️ Achat minimum: 100g\n`;
+      }
+      
       message += `📝 ${product.description.substring(0, 50)}...\n\n`;
     });
 
