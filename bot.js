@@ -129,6 +129,15 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Middlewares globaux
 bot.use(session());
+
+// ✅ CORRECTION AJOUTÉE : Middleware pour initialiser la session
+bot.use((ctx, next) => {
+  if (!ctx.session) {
+    ctx.session = {};
+  }
+  return next();
+});
+
 bot.use(authMiddleware.logUserAction);
 bot.use(authMiddleware.rateLimit());
 bot.use(cartMiddleware.updateCartTimestamp);
