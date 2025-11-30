@@ -12,7 +12,6 @@ async function initializeProducts() {
         price: 8.00,
         imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.jpg',
         videoUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/mimosa.mp4',
-        stock: 100,
         isActive: true,
         category: 'edibles',
         quality: 'Premium'
@@ -23,18 +22,16 @@ async function initializeProducts() {
         price: 25.00,
         imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Frozen.jpg',
         videoUrl: '',
-        stock: 50,
         isActive: true,
         category: 'resine',
         quality: 'Premium'
       },
       {
         name: '🌿 Cali Kush ',
-        description: 'Fleur de CBD biologique, arômes fruités et effets relaxants sans psychoactifs.',
+        description: 'Fleur biologique, arômes fruités et effets relaxants sans psychoactifs.',
         price: 12.00,
         imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Cali.png',
         videoUrl: '',
-        stock: 80,
         isActive: true,
         category: 'fleurs',
         quality: 'Bio'
@@ -42,13 +39,22 @@ async function initializeProducts() {
       {
         name: '🍯 Birthday Cake ',
         description: 'resine full spectrum, 10% de concentration. Idéale pour le bien-être quotidien.',
-        price: 35.00,
+        price: 20.00,
         imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Birthday.jpg',
         videoUrl: '',
-        stock: 30,
         isActive: true,
         category: 'huiles',
         quality: 'Full Spectrum'
+      },
+      {
+        name: '🧼 Perfect Runtz',
+        description: 'Produit premium de haute qualité. Texture unique et arômes exceptionnels.',
+        price: 320.00,
+        imageUrl: 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/Runtz.jpg',
+        videoUrl: '',
+        isActive: true,
+        category: 'la mousse',
+        quality: 'Premium'
       }
     ];
 
@@ -88,6 +94,11 @@ async function initializeProducts() {
 
       if (created) {
         console.log(`✅ Produit créé: ${productData.name}`);
+        
+        // Message spécifique pour La Mousse
+        if (productData.category === 'la mousse') {
+          console.log(`⚠️  La Mousse - Achat minimum: 100g`);
+        }
       } else {
         console.log(`📦 Produit existant: ${productData.name}`);
       }
