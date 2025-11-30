@@ -248,7 +248,280 @@ function getStatusText(status) {
   return statusMap[status] || status;
 }
 
-// Gestion des produits
+// === FONCTIONS POUR AJOUTER UN PRODUIT AVEC MÉDIAS ===
+
+async function addProduct(ctx) {
+  try {
+    if (!ctx.session) ctx.session = {};
+    
+    ctx.session.creatingProduct = true;
+    ctx.session.newProduct = {};
+    ctx.session.creationStep = 'name';
+    
+    await ctx.reply(
+      '🆕 *Création d\\'un nouveau produit*\n\n' +
+      'Étape 1/6: Entrez le nom du produit :\n' +
+      '(Utilisez /cancel pour annuler)',
+      { parse_mode: 'Markdown' }
+    );
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur création produit:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la création du produit');
+  }
+}
+
+async function handleProductCreation(ctx) {
+  try {
+    const message = ctx.message.text;
+    
+    if (ctx.session.creationStep === 'name') {
+      // Étape 1: Nom du produit
+      ctx.session.newProduct.name = message;
+      ctx.session.creationStep = 'description';
+      await ctx.reply('📝 Étape 2/6: Entrez la description du produit :');
+      
+    } else if (ctx.session.creationStep === 'description') {
+      // Étape 2: Description
+      ctx.session.newProduct.description = message;
+      ctx.session.creationStep = 'price';
+      await ctx.reply('💰 Étape 3/6: Entrez le prix du produit (ex: 12.50) :');
+      
+    } else if (ctx.session.creationStep === 'price') {
+      // Étape 3: Prix
+      const price = parseFloat(message);
+      if (isNaN(price) || price <= 0) {
+        return ctx.reply('❌ Prix invalide. Entrez un nombre positif (ex: 12.50) :');
+      }
+      ctx.session.newProduct.price = price;
+      ctx.session.creationStep = 'photo';
+      
+      await ctx.reply(
+        '🖼️ Étape 4/6: Envoyez la PHOTO du produit\n\n' +
+        '📎 *Envoyez l\\'image comme fichier* (pas en copier-coller)\n' +
+        '💡 *Format:* JPG, PNG\n' +
+        '📏 *Taille:* Moins de 5MB\n\n' +
+        'Ou tapez /skip pour passer cette étape',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    
+  } catch (error) {
+    console.error('❌ Erreur création produit:', error);
+    await ctx.reply('❌ Erreur lors de la création');
+  }
+}
+
+// Nouvelle fonction pour gérer les photos
+async function handleProductPhoto(ctx) {
+  try {
+    if (ctx.message.photo) {
+      // Récupérer la photo la plus grande
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      const file = await ctx.telegram.getFile(photo.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+      
+      ctx.session.newProduct.photoUrl = fileUrl;
+      ctx.session.creationStep = 'video';
+      
+      await ctx.reply(
+        '✅ Photo enregistrée!\n\n' +
+        '🎬 Étape 5/6: Envoyez la VIDÉO du produit\n\n' +
+        '📎 *Envoyez la vidéo comme fichier*\n' +
+        '💡 *Format:* MP4, MOV\n' +
+        '📏 *Taille:* Moins de 20MB\n\n' +
+        'Ou tapez /skip pour passer cette étape',
+        { parse_mode: 'Markdown' }
+      );
+      
+    } else if (ctx.message.text === '/skip') {
+      ctx.session.newProduct.photoUrl = 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/default.jpg';
+      ctx.session.creationStep = 'video';
+      
+      await ctx.reply(
+        '⏭️ Étape photo ignorée\n\n' +
+        '🎬 Étape 5/6: Envoyez la VIDÉO du produit\n\n' +
+        'Ou tapez /skip pour passer cette étape'
+      );
+    } else {
+      await ctx.reply('❌ Veuillez envoyer une image valide ou taper /skip');
+    }
+    
+  } catch (error) {
+    console.error('❌ Erreur traitement photo:', error);
+    await ctx.reply('❌ Erreur lors du traitement de la photo');
+  }
+}
+
+// Nouvelle fonction pour gérer les vidéos
+async function handleProductVideo(ctx) {
+  try {
+    if (ctx.message.video) {
+      const video = ctx.message.video;
+      const file = await ctx.telegram.getFile(video.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+      
+      ctx.session.newProduct.videoUrl = fileUrl;
+      ctx.session.creationStep = 'category';
+      
+      await ctx.reply(
+        '✅ Vidéo enregistrée!\n\n' +
+        '🎯 Étape 6/6: Choisissez la catégorie :',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
+              [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
+              [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
+              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }]
+            ]
+          }
+        }
+      );
+      
+    } else if (ctx.message.text === '/skip') {
+      ctx.session.newProduct.videoUrl = '';
+      ctx.session.creationStep = 'category';
+      
+      await ctx.reply(
+        '⏭️ Étape vidéo ignorée\n\n' +
+        '🎯 Étape 6/6: Choisissez la catégorie :',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
+              [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
+              [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
+              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }]
+            ]
+          }
+        }
+      );
+    } else {
+      await ctx.reply('❌ Veuillez envoyer une vidéo valide ou taper /skip');
+    }
+    
+  } catch (error) {
+    console.error('❌ Erreur traitement vidéo:', error);
+    await ctx.reply('❌ Erreur lors du traitement de la vidéo');
+  }
+}
+
+async function handleProductCategory(ctx, category) {
+  try {
+    ctx.session.newProduct.category = category;
+    
+    await ctx.reply(
+      '⭐ Choisissez la qualité :',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🌟 Premium', callback_data: 'quality_premium_new' }],
+            [{ text: '🌿 Bio', callback_data: 'quality_bio_new' }],
+            [{ text: '🎯 Full Spectrum', callback_data: 'quality_fullspectrum_new' }],
+            [{ text: '💎 Craft', callback_data: 'quality_craft_new' }]
+          ]
+        }
+      }
+    );
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur catégorie produit:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la sélection de la catégorie');
+  }
+}
+
+async function handleProductQuality(ctx, quality) {
+  try {
+    const newProduct = ctx.session.newProduct;
+    
+    // URL par défaut si pas de photo
+    const imageUrl = newProduct.photoUrl || 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/default.jpg';
+    const videoUrl = newProduct.videoUrl || '';
+    
+    // Créer le produit dans la base
+    const product = await Product.create({
+      name: newProduct.name,
+      description: newProduct.description,
+      price: newProduct.price,
+      imageUrl: imageUrl,
+      videoUrl: videoUrl,
+      stock: 0, // Stock à 0 comme demandé
+      isActive: true,
+      category: newProduct.category,
+      quality: quality
+    });
+    
+    // Afficher un résumé avec prévisualisation
+    let summaryMessage = `
+✅ *Produit créé avec succès !*
+
+📦 ID: ${product.id}
+🍃 Nom: ${product.name}
+📝 Description: ${product.description}
+💰 Prix: ${product.price}€
+📦 Stock: ${product.stock}g
+🎯 Catégorie: ${product.category}
+⭐ Qualité: ${product.quality}
+    `.trim();
+    
+    // Ajouter info médias
+    if (newProduct.photoUrl && newProduct.photoUrl !== 'https://cdn.jsdelivr.net/gh/louimanta/caliparis/images/default.jpg') {
+      summaryMessage += '\n🖼️ Photo: ✅ Enregistrée';
+    } else {
+      summaryMessage += '\n🖼️ Photo: 🏷️ Par défaut';
+    }
+    
+    if (newProduct.videoUrl) {
+      summaryMessage += '\n🎬 Vidéo: ✅ Enregistrée';
+    } else {
+      summaryMessage += '\n🎬 Vidéo: ❌ Aucune';
+    }
+    
+    summaryMessage += '\n\n💡 *Stock initial: 0g - Pensez à l\\'approvisionner*';
+    
+    // Envoyer le résumé
+    await ctx.reply(summaryMessage, { parse_mode: 'Markdown' });
+    
+    // Prévisualiser le produit
+    try {
+      if (product.videoUrl) {
+        // Si vidéo existe, envoyer la vidéo
+        await ctx.replyWithVideo(product.videoUrl, {
+          caption: `🎬 Aperçu: ${product.name}`,
+          parse_mode: 'Markdown'
+        });
+      } else if (product.imageUrl) {
+        // Sinon envoyer la photo
+        await ctx.replyWithPhoto(product.imageUrl, {
+          caption: `🖼️ Aperçu: ${product.name}`,
+          parse_mode: 'Markdown'
+        });
+      }
+    } catch (previewError) {
+      console.log('⚠️ Impossible de prévisualiser le média:', previewError.message);
+    }
+    
+    // Nettoyer la session
+    delete ctx.session.creatingProduct;
+    delete ctx.session.newProduct;
+    delete ctx.session.creationStep;
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur création finale:', error);
+    await ctx.reply('❌ Erreur lors de la création du produit en base');
+    
+    // Nettoyer la session en cas d'erreur
+    delete ctx.session.creatingProduct;
+    delete ctx.session.newProduct;
+    delete ctx.session.creationStep;
+  }
+}
+
+// Gestion des produits - MODIFIÉE POUR AJOUTER LE BOUTON
 async function showProductManagement(ctx) {
   try {
     const products = await safeDbOperation(() => Product.findAll({
@@ -266,6 +539,7 @@ async function showProductManagement(ctx) {
     });
 
     const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🆕 Ajouter produit', 'admin_add_product')],
       [Markup.button.callback('📋 Voir produits actifs', 'admin_active_products')],
       [Markup.button.callback('🚫 Désactiver produit', 'admin_disable_product')],
       [Markup.button.callback('✅ Activer produit', 'admin_enable_product')],
@@ -463,8 +737,6 @@ async function showActiveProducts(ctx) {
   }
 }
 
-
-// Dans votre adminHandler.js existant, vérifiez que vous avez bien :
 module.exports = {
   handleAdminCommands,
   showAdminStats,
@@ -474,11 +746,16 @@ module.exports = {
   showSalesToday,
   showActiveProducts,
   showOrderStatuses,
-  // === CES FONCTIONS DOIVENT ÊTRE PRÉSENTES ===
   disableProduct,
   enableProduct,
   deleteProduct,
   handleProductIdInput,
-  cancelProductAction
+  cancelProductAction,
+  // === AJOUT DES NOUVELLES FONCTIONS ===
+  addProduct,
+  handleProductCreation,
+  handleProductPhoto,
+  handleProductVideo,
+  handleProductCategory,
+  handleProductQuality
 };
-
