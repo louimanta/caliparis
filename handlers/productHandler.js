@@ -13,12 +13,24 @@ async function safeDbOperation(operation, fallback = null) {
   }
 }
 
+// Fonction pour vérifier si un produit a un achat minimum (UNIQUEMENT La Mousse)
+function hasMinimumPurchase(product) {
+  return product.category === 'la mousse';
+}
+
+// Fonction pour obtenir la quantité minimum (UNIQUEMENT La Mousse)
+function getMinimumQuantity(product) {
+  if (product.category === 'la mousse') {
+    return 100;
+  }
+  return 1; // Quantité minimum par défaut pour les autres produits
+}
+
 async function showProducts(ctx) {
   try {
     const products = await safeDbOperation(() => Product.findAll({ 
       where: { 
-        isActive: true, 
-        stock: { [Op.gt]: 0 }
+        isActive: true
       },
       order: [['name', 'ASC']]
     }), []);
@@ -34,14 +46,18 @@ async function showProducts(ctx) {
 
     // Afficher chaque produit
     for (const product of products) {
-      const message = `
+      let message = `
 🛍️ *${product.name}*
 💰 ${product.price}€/g
 📝 ${product.description}
-📦 Stock: ${product.stock}g disponible(s)
-
-_Choisissez la quantité :_
       `.trim();
+
+      // Ajouter mention achat minimum UNIQUEMENT pour La Mousse
+      if (product.category === 'la mousse') {
+        message += '\n\n⚠️ *Achat minimum: 100g*';
+      }
+
+      message += '\n\n_Choisissez la quantité :_';
 
       const keyboard = Markup.inlineKeyboard([
         [
@@ -52,7 +68,7 @@ _Choisissez la quantité :_
         [
           Markup.button.callback('➕ 10g', `add_10_${product.id}`),
           Markup.button.callback('➕ 20g', `add_20_${product.id}`),
-          Markup.button.callback('⚡ Autre', `custom_${product.id}`)
+          Markup.button.callback('➕ 50g', `add_50_${product.id}`)
         ],
         [
           Markup.button.callback('🎬 Vidéo', `video_${product.id}`),
@@ -133,13 +149,20 @@ async function showProductDetails(ctx, productId) {
       return ctx.answerCbQuery('❌ Produit non trouvé');
     }
 
-    const detailsMessage = `
+    let detailsMessage = `
 🔍 *Détails Complets - ${product.name}*
 
 📊 *Informations techniques:*
 • Type: ${product.category || 'Non spécifié'}
 • Qualité: ${product.quality || 'Standard'}
+    `;
 
+    // Ajouter information achat minimum pour La Mousse
+    if (product.category === 'la mousse') {
+      detailsMessage += '\n• ⚠️ *Achat minimum: 100g*';
+    }
+
+    detailsMessage += `
 📝 *Description:*
 ${product.description}
 
@@ -147,9 +170,6 @@ ${product.description}
 • Conserver au sec et à l'abri de la lumière
 • Consommer avec modération
 • Réservé aux adultes
-
-📦 *Disponibilité:*
-${product.stock}g en stock
     `.trim();
 
     await ctx.reply(detailsMessage, {
@@ -166,4 +186,10 @@ ${product.stock}g en stock
   }
 }
 
-module.exports = { showProducts, showProductVideo, showProductDetails };
+module.exports = { 
+  showProducts, 
+  showProductVideo, 
+  showProductDetails,
+  hasMinimumPurchase,
+  getMinimumQuantity
+};
