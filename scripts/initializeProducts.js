@@ -49,19 +49,37 @@ async function initializeProducts() {
         isActive: true,
         category: 'huiles',
         quality: 'Full Spectrum'
-      },
-    
+      }
+    ];
 
-    // === CORRECTION : Vérifier d'abord si l'initialisation est nécessaire ===
+    // === MODIFICATION : Vérifier si des produits existent ===
     const existingCount = await Product.count();
     console.log(`📊 ${existingCount} produits existants dans la base`);
     
-    // Si des produits existent déjà, ne pas réinitialiser
     if (existingCount > 0) {
-      console.log('✅ Produits déjà initialisés, pas de création');
+      console.log('🔄 Mise à jour des URLs des produits existants...');
+      
+      // Mettre à jour chaque produit existant
+      for (const productData of products) {
+        const result = await Product.update({
+          imageUrl: productData.imageUrl,
+          videoUrl: productData.videoUrl
+        }, {
+          where: { name: productData.name }
+        });
+        
+        if (result[0] > 0) {
+          console.log(`✅ URLs mises à jour pour: ${productData.name}`);
+        } else {
+          console.log(`📦 Produit non modifié: ${productData.name}`);
+        }
+      }
+      
+      console.log('🎉 Mise à jour des URLs terminée!');
       return;
     }
 
+    // Créer les produits s'ils n'existent pas
     for (const productData of products) {
       const [product, created] = await Product.findOrCreate({
         where: { name: productData.name },
