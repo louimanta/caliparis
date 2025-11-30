@@ -130,7 +130,15 @@ async function showProductVideo(ctx, productId) {
       return ctx.answerCbQuery('❌ Vidéo non disponible pour ce produit');
     }
 
-    await ctx.replyWithVideo(product.videoUrl, {
+    // Nettoyer l'URL de la vidéo
+    let videoUrl = product.videoUrl.trim();
+    
+    // Vérifier si c'est une URL Telegram (ne fonctionne pas en public)
+    if (videoUrl.includes('api.telegram.org')) {
+      return ctx.answerCbQuery('❌ URL vidéo non accessible. Recréez le produit avec une vidéo valide.');
+    }
+
+    await ctx.replyWithVideo(videoUrl, {
       caption: `🎬 *${product.name}*\n${product.description}`,
       parse_mode: 'Markdown'
     });
