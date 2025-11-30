@@ -64,7 +64,9 @@ const startHandler = loadModule('./handlers/startHandler', { handleStart: fallba
 const productHandler = loadModule('./handlers/productHandler', { 
   showProducts: fallbackHandlers.showProducts,
   showProductVideo: (ctx) => ctx.answerCbQuery('🎬 Vidéo non disponible'),
-  showProductDetails: (ctx) => ctx.answerCbQuery('📊 Détails non disponibles')
+  showProductDetails: (ctx) => ctx.answerCbQuery('📊 Détails non disponibles'),
+  hasMinimumPurchase: (product) => false,
+  getMinimumQuantity: (product) => 1
 });
 const cartHandler = loadModule('./handlers/cartHandler', {
   handleAddToCart: (ctx) => ctx.answerCbQuery('✅ Produit ajouté'),
@@ -459,4 +461,3 @@ process.once('SIGTERM', () => {
 bot.secretPathComponent = () => 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
 
 module.exports = bot;
-
