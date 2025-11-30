@@ -259,7 +259,7 @@ async function addProduct(ctx) {
     ctx.session.creationStep = 'name';
     
     await ctx.reply(
-      '🆕 *Création d\\'un nouveau produit*\n\n' +
+      '🆕 *Création d\'un nouveau produit*\n\n' +
       'Étape 1/6: Entrez le nom du produit :\n' +
       '(Utilisez /cancel pour annuler)',
       { parse_mode: 'Markdown' }
@@ -299,7 +299,7 @@ async function handleProductCreation(ctx) {
       
       await ctx.reply(
         '🖼️ Étape 4/6: Envoyez la PHOTO du produit\n\n' +
-        '📎 *Envoyez l\\'image comme fichier* (pas en copier-coller)\n' +
+        '📎 *Envoyez l\'image comme fichier* (pas en copier-coller)\n' +
         '💡 *Format:* JPG, PNG\n' +
         '📏 *Taille:* Moins de 5MB\n\n' +
         'Ou tapez /skip pour passer cette étape',
@@ -480,7 +480,7 @@ async function handleProductQuality(ctx, quality) {
       summaryMessage += '\n🎬 Vidéo: ❌ Aucune';
     }
     
-    summaryMessage += '\n\n💡 *Stock initial: 0g - Pensez à l\\'approvisionner*';
+    summaryMessage += '\n\n💡 *Stock initial: 0g - Pensez à l\'approvisionner*';
     
     // Envoyer le résumé
     await ctx.reply(summaryMessage, { parse_mode: 'Markdown' });
