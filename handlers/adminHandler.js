@@ -29,8 +29,7 @@ async function handleAdminCommands(ctx) {
           [Markup.button.callback('📦 Commandes en attente', 'admin_pending_orders')],
           [Markup.button.callback('🛍️ Gérer produits', 'admin_products')],
           [Markup.button.callback('📈 Ventes aujourd\'hui', 'admin_sales_today')],
-          [Markup.button.callback('🔍 Voir statuts', 'admin_show_statuses')],
-          [Markup.button.callback('🌿 Gérer variétés', 'admin_manage_varieties')] // NOUVEAU BOUTON
+          [Markup.button.callback('🔍 Voir statuts', 'admin_show_statuses')]
         ])
       }
     );
@@ -45,14 +44,13 @@ async function showAdminStats(ctx) {
     const totalOrders = await safeDbOperation(() => Order.count(), 0);
     const pendingOrders = await safeDbOperation(() => Order.count({ where: { status: 'pending' } }), 0);
     const totalProducts = await safeDbOperation(() => Product.count(), 0);
-    const activeProducts = await safeDbOperation(() => Product.count({ where: { isActive: true } }), 0);
 
     const statsMessage = `
 📊 *Statistiques CaliParis*
 
 📦 Commandes totales: ${totalOrders}
 ⏳ Commandes en attente: ${pendingOrders}
-🛍️ Produits actifs: ${activeProducts}/${totalProducts}
+🛍️ Produits actifs: ${totalProducts}
 
 💎 *Actions rapides:*
 /gestion - Gérer les commandes
@@ -260,12 +258,7 @@ async function addProduct(ctx) {
     
     await ctx.reply(
       '🆕 *Création d\'un nouveau produit*\n\n' +
-      'Étape 1/7: Entrez le nom du produit :\n\n' +
-      '💡 *Format pour variétés:*\n' +
-      '• Pour variété simple: "Birthday"\n' +
-      '• Pour variétés: "Birthday - OG Kush"\n' +
-      '• Autre variété: "Birthday - Amnesia"\n' +
-      '• La Mousse: "La Mousse - Classic" (100g minimum)\n\n' +
+      'Étape 1/6: Entrez le nom du produit :\n' +
       '(Utilisez /cancel pour annuler)',
       { parse_mode: 'Markdown' }
     );
@@ -285,13 +278,13 @@ async function handleProductCreation(ctx) {
       // Étape 1: Nom du produit
       ctx.session.newProduct.name = message;
       ctx.session.creationStep = 'description';
-      await ctx.reply('📝 Étape 2/7: Entrez la description du produit :');
+      await ctx.reply('📝 Étape 2/6: Entrez la description du produit :');
       
     } else if (ctx.session.creationStep === 'description') {
       // Étape 2: Description
       ctx.session.newProduct.description = message;
       ctx.session.creationStep = 'price';
-      await ctx.reply('💰 Étape 3/7: Entrez le prix du produit (ex: 12.50) :');
+      await ctx.reply('💰 Étape 3/6: Entrez le prix du produit (ex: 12.50) :');
       
     } else if (ctx.session.creationStep === 'price') {
       // Étape 3: Prix
@@ -300,74 +293,21 @@ async function handleProductCreation(ctx) {
         return ctx.reply('❌ Prix invalide. Entrez un nombre positif (ex: 12.50) :');
       }
       ctx.session.newProduct.price = price;
-      ctx.session.creationStep = 'category';
+      ctx.session.creationStep = 'photo';
       
       await ctx.reply(
-        '🎯 Étape 4/7: Choisissez la catégorie :',
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
-              [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
-              [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
-              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }],
-              [{ text: '🧼 La Mousse', callback_data: 'category_la mousse_new' }]
-            ]
-          }
-        }
+        '🖼️ Étape 4/6: Envoyez la PHOTO du produit\n\n' +
+        '📎 *Envoyez l\'image comme fichier* (pas en copier-coller)\n' +
+        '💡 *Format:* JPG, PNG\n' +
+        '📏 *Taille:* Moins de 5MB\n\n' +
+        'Ou tapez /skip pour passer cette étape',
+        { parse_mode: 'Markdown' }
       );
     }
     
   } catch (error) {
     console.error('❌ Erreur création produit:', error);
     await ctx.reply('❌ Erreur lors de la création');
-  }
-}
-
-async function handleProductCategory(ctx, category) {
-  try {
-    ctx.session.newProduct.category = category;
-    ctx.session.creationStep = 'quality';
-    
-    await ctx.reply(
-      '⭐ Étape 5/7: Choisissez la qualité :',
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🌟 Premium', callback_data: 'quality_premium_new' }],
-            [{ text: '🌿 Bio', callback_data: 'quality_bio_new' }],
-            [{ text: '🎯 Full Spectrum', callback_data: 'quality_fullspectrum_new' }],
-            [{ text: '💎 Craft', callback_data: 'quality_craft_new' }]
-          ]
-        }
-      }
-    );
-    
-    await ctx.answerCbQuery();
-  } catch (error) {
-    console.error('❌ Erreur catégorie produit:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de la sélection de la catégorie');
-  }
-}
-
-async function handleProductQuality(ctx, quality) {
-  try {
-    ctx.session.newProduct.quality = quality;
-    ctx.session.creationStep = 'photo';
-    
-    await ctx.reply(
-      '🖼️ Étape 6/7: Envoyez la PHOTO du produit\n\n' +
-      '📎 *Envoyez l\'image comme fichier* (pas en copier-coller)\n' +
-      '💡 *Format:* JPG, PNG\n' +
-      '📏 *Taille:* Moins de 5MB\n\n' +
-      'Ou tapez /skip pour passer cette étape',
-      { parse_mode: 'Markdown' }
-    );
-    
-    await ctx.answerCbQuery();
-  } catch (error) {
-    console.error('❌ Erreur qualité produit:', error);
-    await ctx.answerCbQuery('❌ Erreur lors de la sélection de la qualité');
   }
 }
 
@@ -385,7 +325,7 @@ async function handleProductPhoto(ctx) {
       
       await ctx.reply(
         '✅ Photo enregistrée!\n\n' +
-        '🎬 Étape 7/7: Envoyez la VIDÉO du produit\n\n' +
+        '🎬 Étape 5/6: Envoyez la VIDÉO du produit\n\n' +
         '📎 *Envoyez la vidéo comme fichier*\n' +
         '💡 *Format:* MP4, MOV\n' +
         '📏 *Taille:* Moins de 20MB\n\n' +
@@ -399,7 +339,7 @@ async function handleProductPhoto(ctx) {
       
       await ctx.reply(
         '⏭️ Étape photo ignorée\n\n' +
-        '🎬 Étape 7/7: Envoyez la VIDÉO du produit\n\n' +
+        '🎬 Étape 5/6: Envoyez la VIDÉO du produit\n\n' +
         'Ou tapez /skip pour passer cette étape'
       );
     } else {
@@ -421,15 +361,43 @@ async function handleProductVideo(ctx) {
       const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
       
       ctx.session.newProduct.videoUrl = fileUrl;
+      ctx.session.creationStep = 'category';
       
-      // Terminer la création du produit
-      await finalizeProductCreation(ctx);
+      await ctx.reply(
+        '✅ Vidéo enregistrée!\n\n' +
+        '🎯 Étape 6/6: Choisissez la catégorie :',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
+              [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
+              [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
+              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }],
+              [{ text: '🧼 La Mousse', callback_data: 'category_la mousse_new' }] // AJOUT DE LA NOUVELLE CATÉGORIE
+            ]
+          }
+        }
+      );
       
     } else if (ctx.message.text === '/skip') {
       ctx.session.newProduct.videoUrl = '';
+      ctx.session.creationStep = 'category';
       
-      // Terminer la création du produit
-      await finalizeProductCreation(ctx);
+      await ctx.reply(
+        '⏭️ Étape vidéo ignorée\n\n' +
+        '🎯 Étape 6/6: Choisissez la catégorie :',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🍫 Edibles', callback_data: 'category_edibles_new' }],
+              [{ text: '💎 Résine', callback_data: 'category_resine_new' }],
+              [{ text: '🌿 Fleurs', callback_data: 'category_fleurs_new' }],
+              [{ text: '🍯 Huiles', callback_data: 'category_huiles_new' }],
+              [{ text: '🧼 La Mousse', callback_data: 'category_la mousse_new' }] // AJOUT DE LA NOUVELLE CATÉGORIE
+            ]
+          }
+        }
+      );
     } else {
       await ctx.reply('❌ Veuillez envoyer une vidéo valide ou taper /skip');
     }
@@ -440,7 +408,32 @@ async function handleProductVideo(ctx) {
   }
 }
 
-async function finalizeProductCreation(ctx) {
+async function handleProductCategory(ctx, category) {
+  try {
+    ctx.session.newProduct.category = category;
+    
+    await ctx.reply(
+      '⭐ Choisissez la qualité :',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🌟 Premium', callback_data: 'quality_premium_new' }],
+            [{ text: '🌿 Bio', callback_data: 'quality_bio_new' }],
+            [{ text: '🎯 Full Spectrum', callback_data: 'quality_fullspectrum_new' }],
+            [{ text: '💎 Craft', callback_data: 'quality_craft_new' }]
+          ]
+        }
+      }
+    );
+    
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('❌ Erreur catégorie produit:', error);
+    await ctx.answerCbQuery('❌ Erreur lors de la sélection de la catégorie');
+  }
+}
+
+async function handleProductQuality(ctx, quality) {
   try {
     const newProduct = ctx.session.newProduct;
     
@@ -457,7 +450,7 @@ async function finalizeProductCreation(ctx) {
       videoUrl: videoUrl,
       isActive: true,
       category: newProduct.category,
-      quality: newProduct.quality
+      quality: quality
     });
     
     // Afficher un résumé avec prévisualisation
@@ -517,6 +510,7 @@ async function finalizeProductCreation(ctx) {
     delete ctx.session.newProduct;
     delete ctx.session.creationStep;
     
+    await ctx.answerCbQuery();
   } catch (error) {
     console.error('❌ Erreur création finale:', error);
     await ctx.reply('❌ Erreur lors de la création du produit en base');
@@ -532,8 +526,7 @@ async function finalizeProductCreation(ctx) {
 async function showProductManagement(ctx) {
   try {
     const products = await safeDbOperation(() => Product.findAll({
-      order: [['name', 'ASC']],
-      limit: 50
+      order: [['id', 'ASC']]
     }), []);
 
     if (!products || products.length === 0) {
@@ -541,33 +534,21 @@ async function showProductManagement(ctx) {
     }
 
     let message = '🛍️ *Gestion des Produits*\n\n';
-    
-    // Grouper par nom de base pour voir les variétés
-    const groupedProducts = {};
     products.forEach(product => {
-      const baseName = product.name.split(' - ')[0];
-      if (!groupedProducts[baseName]) {
-        groupedProducts[baseName] = [];
+      message += `ID: ${product.id} | ${product.isActive ? '✅' : '❌'} ${product.name}\n`;
+      message += `💰 ${product.price}€/g\n`;
+      
+      // Ajouter info achat minimum pour La Mousse
+      if (product.category === 'la mousse') {
+        message += `⚠️ Achat minimum: 100g\n`;
       }
-      groupedProducts[baseName].push(product);
+      
+      message += `\n`;
     });
-
-    for (const [baseName, variants] of Object.entries(groupedProducts)) {
-      message += `🍃 *${baseName}*\n`;
-      variants.forEach(product => {
-        message += `  ${product.isActive ? '✅' : '❌'} ID:${product.id} - ${product.name}\n`;
-        message += `     💰 ${product.price}€/g\n`;
-        if (product.category === 'la mousse') {
-          message += `     ⚠️ Achat min: 100g\n`;
-        }
-      });
-      message += '\n';
-    }
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🆕 Ajouter produit', 'admin_add_product')],
       [Markup.button.callback('📋 Voir produits actifs', 'admin_active_products')],
-      [Markup.button.callback('🌿 Gérer variétés', 'admin_manage_varieties')],
       [Markup.button.callback('🚫 Désactiver produit', 'admin_disable_product')],
       [Markup.button.callback('✅ Activer produit', 'admin_enable_product')],
       [Markup.button.callback('🗑️ Supprimer produit', 'admin_delete_product')],
@@ -583,137 +564,6 @@ async function showProductManagement(ctx) {
   } catch (error) {
     console.error('❌ Erreur gestion produits:', error);
     await ctx.answerCbQuery('❌ Erreur lors du chargement des produits.');
-  }
-}
-
-// === NOUVELLE FONCTION : GESTION DES VARIÉTÉS ===
-async function manageProductVarieties(ctx) {
-  try {
-    // Récupérer tous les produits groupés par nom de base
-    const products = await safeDbOperation(() => Product.findAll({
-      order: [['name', 'ASC']],
-      limit: 100
-    }), []);
-
-    if (!products || products.length === 0) {
-      return ctx.reply('📦 Aucun produit dans la base de données.');
-    }
-
-    // Grouper par nom de base
-    const groupedProducts = {};
-    products.forEach(product => {
-      const nameParts = product.name.split(' - ');
-      const baseName = nameParts[0].trim();
-      const variant = nameParts[1] ? nameParts[1].trim() : 'Standard';
-      
-      if (!groupedProducts[baseName]) {
-        groupedProducts[baseName] = {
-          baseName: baseName,
-          variants: []
-        };
-      }
-      
-      groupedProducts[baseName].variants.push({
-        id: product.id,
-        name: product.name,
-        variant: variant,
-        price: product.price,
-        isActive: product.isActive,
-        category: product.category
-      });
-    });
-
-    let message = '🌿 *Gestion des Variétés*\n\n';
-    
-    for (const [baseName, data] of Object.entries(groupedProducts)) {
-      message += `🍃 *${baseName}*\n`;
-      message += `   📊 ${data.variants.length} variété(s)\n`;
-      
-      data.variants.forEach(variant => {
-        const status = variant.isActive ? '✅' : '❌';
-        message += `   ${status} ${variant.variant} - ${variant.price}€/g\n`;
-      });
-      
-      message += '\n';
-    }
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📊 Statistiques variétés', 'admin_variety_stats')],
-      [Markup.button.callback('➕ Ajouter variété', 'admin_add_variety')],
-      [Markup.button.callback('🔄 Fusionner produits', 'admin_merge_products')],
-      [Markup.button.callback('⬅️ Retour gestion', 'admin_products')]
-    ]);
-
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      ...keyboard
-    });
-
-    await ctx.answerCbQuery();
-  } catch (error) {
-    console.error('❌ Erreur gestion variétés:', error);
-    await ctx.answerCbQuery('❌ Erreur lors du chargement des variétés');
-  }
-}
-
-// === NOUVELLE FONCTION : STATISTIQUES VARIÉTÉS ===
-async function showVarietyStats(ctx) {
-  try {
-    const products = await safeDbOperation(() => Product.findAll({
-      where: { isActive: true },
-      order: [['name', 'ASC']]
-    }), []);
-
-    // Analyser les variétés
-    const varietyStats = {};
-    let totalProducts = 0;
-    let productsWithVarieties = 0;
-
-    products.forEach(product => {
-      totalProducts++;
-      const nameParts = product.name.split(' - ');
-      const baseName = nameParts[0].trim();
-      
-      if (!varietyStats[baseName]) {
-        varietyStats[baseName] = {
-          count: 0,
-          variants: []
-        };
-      }
-      
-      varietyStats[baseName].count++;
-      varietyStats[baseName].variants.push({
-        name: product.name,
-        price: product.price
-      });
-      
-      if (nameParts.length > 1) {
-        productsWithVarieties++;
-      }
-    });
-
-    let message = '📊 *Statistiques des Variétés*\n\n';
-    message += `📦 Produits totaux: ${totalProducts}\n`;
-    message += `🌿 Produits avec variétés: ${productsWithVarieties}\n\n`;
-    
-    message += '*Détail par produit:*\n';
-    for (const [baseName, data] of Object.entries(varietyStats)) {
-      message += `\n🍃 *${baseName}*\n`;
-      message += `   📊 Variétés: ${data.count}\n`;
-      
-      if (data.count > 1) {
-        const prices = data.variants.map(v => v.price);
-        const minPrice = Math.min(...prices);
-        const maxPrice = Math.max(...prices);
-        message += `   💰 Prix: ${minPrice}€ - ${maxPrice}€\n`;
-      }
-    }
-
-    await ctx.reply(message, { parse_mode: 'Markdown' });
-    await ctx.answerCbQuery();
-  } catch (error) {
-    console.error('❌ Erreur stats variétés:', error);
-    await ctx.answerCbQuery('❌ Erreur calcul statistiques');
   }
 }
 
@@ -880,29 +730,18 @@ async function showActiveProducts(ctx) {
       return ctx.reply('📦 Aucun produit actif.');
     }
 
-    // Grouper par nom de base
-    const groupedProducts = {};
-    products.forEach(product => {
-      const baseName = product.name.split(' - ')[0];
-      if (!groupedProducts[baseName]) {
-        groupedProducts[baseName] = [];
-      }
-      groupedProducts[baseName].push(product);
-    });
-
     let message = '✅ *Produits Actifs*\n\n';
-    
-    for (const [baseName, variants] of Object.entries(groupedProducts)) {
-      message += `🍃 *${baseName}*\n`;
-      variants.forEach(product => {
-        const variantName = product.name.replace(baseName, '').replace(' - ', '').trim() || 'Standard';
-        message += `  • ${variantName} - ${product.price}€/g\n`;
-        if (product.category === 'la mousse') {
-          message += `    ⚠️ Achat minimum: 100g\n`;
-        }
-      });
-      message += '\n';
-    }
+    products.forEach(product => {
+      message += `🛍️ ${product.name}\n`;
+      message += `💰 ${product.price}€/g\n`;
+      
+      // Ajouter info achat minimum pour La Mousse
+      if (product.category === 'la mousse') {
+        message += `⚠️ Achat minimum: 100g\n`;
+      }
+      
+      message += `📝 ${product.description.substring(0, 50)}...\n\n`;
+    });
 
     await ctx.reply(message, { parse_mode: 'Markdown' });
     await ctx.answerCbQuery();
@@ -926,14 +765,11 @@ module.exports = {
   deleteProduct,
   handleProductIdInput,
   cancelProductAction,
-  // === FONCTIONS EXISTANTES ===
+  // === AJOUT DES NOUVELLES FONCTIONS ===
   addProduct,
   handleProductCreation,
   handleProductPhoto,
   handleProductVideo,
   handleProductCategory,
-  handleProductQuality,
-  // === NOUVELLES FONCTIONS VARIÉTÉS ===
-  manageProductVarieties,
-  showVarietyStats
+  handleProductQuality
 };
