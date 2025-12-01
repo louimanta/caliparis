@@ -322,6 +322,16 @@ bot.action(/^select_variant_(.+)_1$/, async (ctx) => {
   await productHandler.handleVariantSelection(ctx, variantId, 1);
 });
 
+// 3. CORRECTION AJOUTÉE : Handler pour les variantes avec autres quantités
+bot.action(/^select_variant_(.+)_(\d+)$/, async (ctx) => {
+  const variantId = ctx.match[1];
+  const quantity = parseInt(ctx.match[2]);
+  console.log(`🛒 Sélection variante: ${variantId}, quantité: ${quantity}`);
+  
+  await safeAnswerCbQuery(ctx, '✅ Ajout au panier...');
+  await productHandler.handleVariantSelection(ctx, variantId, quantity);
+});
+
 // ==============================================
 // CALLBACKS EXISTANTS POUR PRODUITS
 // ==============================================
@@ -526,14 +536,22 @@ async function startBot() {
       console.log('✅ Base de données synchronisée');
     }
     
-    await bot.launch();
+    // CORRECTION : Ajouter dropPendingUpdates pour éviter l'erreur 409
+    await bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member']
+    });
     console.log('🎉 Bot CaliParis démarré avec succès!');
     
   } catch (error) {
     console.error('❌ Erreur démarrage:', error);
     
     try {
-      await bot.launch();
+      // Réessayer avec les mêmes paramètres
+      await bot.launch({
+        dropPendingUpdates: true,
+        allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member']
+      });
       console.log('🎉 Bot démarré en mode de secours!');
     } catch (finalError) {
       console.error('💥 Échec critique:', finalError);
@@ -541,7 +559,8 @@ async function startBot() {
   }
 }
 
-setTimeout(startBot, 1000);
+// CORRECTION : Lancer directement sans setTimeout
+startBot();
 
 // ==============================================
 // GESTION PROPRE DE L'ARRÊT
