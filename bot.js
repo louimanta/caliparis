@@ -53,8 +53,6 @@ function safeAnswerCbQuery(ctx, text = '') {
 const fallbackHandlers = {
   handleStart: (ctx) => ctx.reply('🌿 Bienvenue chez CaliParis! 🌿\n\nUtilisez les boutons pour naviguer.'),
   showProducts: (ctx) => ctx.reply('📦 Catalogue - Choisissez vos produits'),
-  showCatalogueGrouped: (ctx) => ctx.reply('🌿 Catalogue variétés'),
-  showProductVariants: (ctx) => ctx.reply('🌿 Variétés disponibles'),
   showCart: (ctx) => ctx.reply('🛒 Votre panier est vide'),
   handleCheckout: (ctx) => ctx.reply('💰 Passer commande'),
   handleAdminCommands: (ctx) => ctx.reply('👨‍💼 Panel administrateur')
@@ -65,8 +63,6 @@ console.log('📥 Chargement des handlers...');
 const startHandler = loadModule('./handlers/startHandler', { handleStart: fallbackHandlers.handleStart });
 const productHandler = loadModule('./handlers/productHandler', { 
   showProducts: fallbackHandlers.showProducts,
-  showCatalogueGrouped: fallbackHandlers.showCatalogueGrouped,
-  showProductVariants: fallbackHandlers.showProductVariants,
   showProductVideo: (ctx) => ctx.answerCbQuery('🎬 Vidéo non disponible'),
   showProductDetails: (ctx) => ctx.answerCbQuery('📊 Détails non disponibles'),
   hasMinimumPurchase: (product) => false,
@@ -160,7 +156,6 @@ bot.start(startHandler.handleStart);
 
 // Handlers de messages
 bot.hears('📦 Voir le catalogue', productHandler.showProducts);
-bot.hears('🌿 Catalogue variétés', productHandler.showCatalogueGrouped); // NOUVELLE COMMANDE
 bot.hears('🛒 Mon panier', cartHandler.showCart);
 bot.hears('🎬 Vidéo présentation', (ctx) => {
   ctx.reply('🎬 Vidéo de présentation bientôt disponible!\nDécouvrez notre qualité premium 🌿');
@@ -279,23 +274,6 @@ bot.action(/details_(\d+)/, async (ctx) => {
   await safeAnswerCbQuery(ctx, '📊 Chargement détails...');
   await productHandler.showProductDetails(ctx, productId);
 });
-
-// === NOUVEAUX CALLBACKS POUR LES VARIÉTÉS ===
-
-// Gestion des variétés
-bot.action(/^variants_(.+)$/, async (ctx) => {
-  const baseProductNameEncoded = ctx.match[1];
-  await safeAnswerCbQuery(ctx, '🌿 Chargement des variétés...');
-  await productHandler.showProductVariants(ctx, baseProductNameEncoded);
-});
-
-// Bouton retour au catalogue groupé
-bot.action('back_to_catalogue', async (ctx) => {
-  await safeAnswerCbQuery(ctx, '🔄 Retour au catalogue...');
-  await productHandler.showCatalogueGrouped(ctx);
-});
-
-// === FIN DES NOUVEAUX CALLBACKS ===
 
 // Callbacks pour panier
 bot.action('view_cart', async (ctx) => {
@@ -483,3 +461,4 @@ process.once('SIGTERM', () => {
 bot.secretPathComponent = () => 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
 
 module.exports = bot;
+
