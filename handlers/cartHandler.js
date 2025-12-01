@@ -89,7 +89,19 @@ async function handleAddToCart(ctx, productId, quantity) {
     console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
-    await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier! cliquer sur Mon panier pour finaliser votre commande.`);
+    
+    // Message avec bouton pour voir le panier
+    await ctx.reply(
+      `🛒 ${quantity}g de "${product.name}" ajouté au panier!`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🛒 Voir mon panier', callback_data: 'view_cart' }],
+            [{ text: '📦 Continuer les achats', callback_data: 'back_to_products' }]
+          ]
+        }
+      }
+    );
     
     console.log(`🎉 handleAddToCart TERMINÉ avec succès`);
     
@@ -156,6 +168,7 @@ async function handleCustomQuantityResponse(ctx) {
     if (isNaN(quantity) || quantity <= 0) {
       console.log('❌ Quantité invalide');
       await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
+      delete ctx.session.waitingForCustomQuantity;
       return;
     }
 
@@ -176,6 +189,7 @@ async function handleCustomQuantityResponse(ctx) {
     
   } catch (error) {
     console.error('Erreur réponse quantité:', error);
+    delete ctx.session.waitingForCustomQuantity;
     await ctx.reply('❌ Erreur lors du traitement de la quantité');
   }
 }
@@ -183,6 +197,12 @@ async function handleCustomQuantityResponse(ctx) {
 async function showCart(ctx) {
   try {
     console.log(`👀 DEBUT showCart - User: ${ctx.from.id}`);
+    
+    // Vérifier que l'utilisateur est bien défini
+    if (!ctx.from || !ctx.from.id) {
+      console.log('❌ Utilisateur non défini');
+      return ctx.reply('❌ Impossible de charger le panier. Veuillez réessayer.');
+    }
     
     const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     console.log(`🛍️ Panier trouvé:`, cart ? 'OUI' : 'NON');
