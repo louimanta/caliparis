@@ -1,8 +1,8 @@
-// productHandler.js - Version complète avec variétés
+// productHandler.js - Version complète avec variétés (corrigé)
 const { Markup } = require('telegraf');
-const { Product, Cart } = require('../models'); // AJOUT DE Cart
+const { Product, Cart } = require('../models');
 const { Op } = require('sequelize');
-const variantsConfig = require('./variantsConfig'); // NOUVEAU IMPORT
+const variantsConfig = require('./variantsConfig');
 
 // Fonction utilitaire pour les opérations DB sécurisées
 async function safeDbOperation(operation, fallback = null) {
@@ -179,6 +179,13 @@ async function showVariantsMenu(ctx, productId) {
       message += '\n';
     });
     
+    // AJOUT : Information sur le minimum pour La Mousse
+    if (product.category === 'la mousse') {
+      message += '\n⚠️ *Achat minimum: 100g*\n';
+    }
+    
+    message += '\n_Sélectionnez une variété pour ajouter 1g :_';
+    
     // Créer les boutons
     const keyboardButtons = [];
     
@@ -191,6 +198,13 @@ async function showVariantsMenu(ctx, productId) {
         )
       ]);
     });
+    
+    // AJOUT : Options de quantité supplémentaires
+    keyboardButtons.push([
+      Markup.button.callback('➕ 3g', `custom_variant_${productId}_3`),
+      Markup.button.callback('➕ 5g', `custom_variant_${productId}_5`),
+      Markup.button.callback('➕ 10g', `custom_variant_${productId}_10`)
+    ]);
     
     // Bouton retour
     keyboardButtons.push([
@@ -213,47 +227,69 @@ async function showVariantsMenu(ctx, productId) {
 // === NOUVELLE FONCTION : SÉLECTION DE VARIÉTÉ ===
 async function handleVariantSelection(ctx, variantId, quantity) {
   try {
-    console.log(`🌿 Sélection variante: ${variantId}, quantité: ${quantity}`);
+    // NE PAS UTILISER CETTE FONCTION DIRECTEMENT
+    // La logique est maintenant dans cartHandler.handleAddVariantToCart
     
-    // Extraire l'ID du produit du variantId (format: "1_ogkush")
-    const [productId, variantName] = variantId.split('_');
-    const product = await safeDbOperation(() => Product.findByPk(productId));
-    const productVariants = variantsConfig[productId];
+    await ctx.answerCbQuery('🔄 Redirection vers panier...');
     
-    if (!product || !productVariants) {
-      return ctx.answerCbQuery('❌ Variété non disponible');
-    }
-    
-    // Trouver la variété sélectionnée
-    const selectedVariant = productVariants.variants.find(v => v.id === variantId);
-    if (!selectedVariant) {
-      return ctx.answerCbQuery('❌ Variété non trouvée');
-    }
-    
-    // Vérifier la quantité minimum pour La Mousse
-    if (product.category === 'la mousse' && quantity < 100) {
-      return ctx.answerCbQuery('❌ La Mousse: minimum 100g requis');
-    }
-    
-    // Vérifier la quantité minimum spécifique à la variété
-    if (selectedVariant.minQuantity && quantity < selectedVariant.minQuantity) {
-      return ctx.answerCbQuery(`❌ ${selectedVariant.minQuantity}g minimum requis`);
-    }
-    
-    // CORRECTION : APPELER cartHandler.handleAddToCart AU LIEU DE LA LOGIQUE INTERNE
-    const cartHandler = require('./cartHandler');
-    await cartHandler.handleAddToCart(ctx, parseInt(productId), quantity);
-    
-    // Essayer de supprimer le message de sélection
-    try {
-      await ctx.deleteMessage();
-    } catch (e) {
-      // Ignorer si impossible
-    }
+    // Rediriger vers cartHandler
+    const { handleAddVariantToCart } = require('./cartHandler');
+    await handleAddVariantToCart(ctx, variantId, quantity);
     
   } catch (error) {
     console.error('❌ Erreur sélection variété:', error);
     await ctx.answerCbQuery('❌ Erreur lors de l\'ajout');
+  }
+}
+
+// === FONCTION POUR VARIANTES AVEC QUANTITÉS CUSTOM ===
+async function handleCustomVariantQuantity(ctx, productId, quantity) {
+  try {
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (!product) {
+      return ctx.answerCbQuery('❌ Produit non trouvé');
+    }
+    
+    const productVariants = variantsConfig[productId.toString()];
+    if (!productVariants || productVariants.variants.length === 0) {
+      return ctx.answerCbQuery('❌ Aucune variété disponible');
+    }
+    
+    // Demander à l'utilisateur de choisir une variété
+    let message = `🌿 *${productVariants.baseName}*\n\n`;
+    message += `Vous avez sélectionné ${quantity}g.\n`;
+    message += `Choisissez maintenant votre variété :\n\n`;
+    
+    productVariants.variants.forEach((variant, index) => {
+      message += `${index + 1}. *${variant.name}* - ${variant.price * quantity}€ (${quantity}g)\n`;
+    });
+    
+    // Créer les boutons pour chaque variété avec la quantité spécifiée
+    const keyboardButtons = [];
+    
+    productVariants.variants.forEach(variant => {
+      keyboardButtons.push([
+        Markup.button.callback(
+          `✅ ${variant.name} - ${variant.price * quantity}€`,
+          `select_variant_${variant.id}_${quantity}`
+        )
+      ]);
+    });
+    
+    keyboardButtons.push([
+      Markup.button.callback('⬅️ Retour aux variétés', `choose_variant_${productId}`)
+    ]);
+    
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(keyboardButtons)
+    });
+    
+    await ctx.answerCbQuery();
+    
+  } catch (error) {
+    console.error('❌ Erreur quantité variété custom:', error);
+    await ctx.answerCbQuery('❌ Erreur lors du traitement');
   }
 }
 
@@ -290,9 +326,25 @@ async function showProductDetails(ctx, productId) {
       return ctx.answerCbQuery('❌ Produit non trouvé');
     }
 
+    // Vérifier si le produit a des variétés
+    const productVariants = variantsConfig[productId.toString()];
+    const hasVariants = productVariants && productVariants.variants.length > 0;
+    
     let detailsMessage = `
-🔍 *Détails Complets - ${product.name}*
+🔍 *Détails Complets - ${hasVariants ? productVariants.baseName : product.name}*`;
 
+    // Ajouter les variétés si disponibles
+    if (hasVariants) {
+      detailsMessage += `\n\n🌿 *Variétés disponibles:*`;
+      productVariants.variants.forEach((variant, index) => {
+        detailsMessage += `\n${index + 1}. *${variant.name}* - ${variant.price}€/g`;
+        if (variant.description) {
+          detailsMessage += `\n   ${variant.description}`;
+        }
+      });
+    }
+
+    detailsMessage += `
 📊 *Informations techniques:*
 • Type: ${product.category || 'Non spécifié'}
 • Qualité: ${product.quality || 'Standard'}
@@ -335,5 +387,6 @@ module.exports = {
   getMinimumQuantity,
   // Nouvelles fonctions
   showVariantsMenu,
-  handleVariantSelection
+  handleVariantSelection,
+  handleCustomVariantQuantity  // AJOUTÉ
 };
