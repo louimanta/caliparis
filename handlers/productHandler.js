@@ -105,7 +105,7 @@ async function showProducts(ctx) {
           [
             Markup.button.callback('➕ 10g', `add_10_${product.id}`),
             Markup.button.callback('➕ 20g', `add_20_${product.id}`),
-            Markup.button.callback('➕ 50g', `add_50_${product.id}`)
+            Markup.button.callback('➕ 100g', `add_100_${product.id}`)
           ],
           [
             Markup.button.callback('🎬 Vidéo', `video_${product.id}`),
@@ -390,3 +390,4 @@ module.exports = {
   handleVariantSelection,
   handleCustomVariantQuantity  // AJOUTÉ
 };
+
