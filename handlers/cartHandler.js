@@ -1,5 +1,6 @@
 const { Cart, Product } = require('../models');
 const { hasMinimumPurchase, getMinimumQuantity } = require('./productHandler');
+const variantsConfig = require('./variantsConfig'); // AJOUT IMPORT
 
 // Fonction sécurisée pour accéder à la base de données AVEC LOGS
 async function safeDbOperation(operation, fallbackValue = null) {
@@ -15,9 +16,129 @@ async function safeDbOperation(operation, fallbackValue = null) {
   }
 }
 
+// === FONCTION POUR AJOUTER DES VARIÉTÉS AU PANIER ===
+async function handleAddVariantToCart(ctx, variantId, quantity) {
+  try {
+    console.log(`🛒 VARIÉTÉ - User: ${ctx.from.id}, Variant: ${variantId}, Qty: ${quantity}`);
+    
+    // Extraire l'ID du produit (format: "1_gelato41")
+    const [productId, variantName] = variantId.split('_');
+    console.log(`📊 Décodé - Produit: ${productId}, Variant: ${variantName}`);
+    
+    // Vérifier si la variété existe dans la config
+    const productVariants = variantsConfig[productId];
+    if (!productVariants) {
+      console.log('❌ Configuration variétés non trouvée');
+      return ctx.answerCbQuery('❌ Produit non trouvé');
+    }
+    
+    // Trouver la variété sélectionnée
+    const selectedVariant = productVariants.variants.find(v => v.id === variantId);
+    if (!selectedVariant) {
+      console.log('❌ Variété non trouvée dans config:', variantId);
+      return ctx.answerCbQuery('❌ Variété non disponible');
+    }
+    
+    console.log(`🌿 Variété trouvée:`, selectedVariant);
+    
+    // Récupérer le produit de base pour vérifications
+    const product = await safeDbOperation(() => Product.findByPk(productId));
+    if (!product) {
+      console.log('❌ Produit base non trouvé en DB');
+      return ctx.answerCbQuery('❌ Produit non trouvé');
+    }
+    
+    // VÉRIFICATION ACHAT MINIMUM UNIQUEMENT POUR LA MOUSSE
+    if (hasMinimumPurchase(product) && quantity < getMinimumQuantity(product)) {
+      console.log(`❌ Quantité insuffisante pour La Mousse: ${quantity} < ${getMinimumQuantity(product)}`);
+      return ctx.answerCbQuery(`❌ Achat minimum: ${getMinimumQuantity(product)}g pour ce produit`);
+    }
+
+    // Récupérer ou créer le panier
+    let cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
+    console.log(`🛍️ Panier existant:`, cart ? 'OUI' : 'NON');
+    
+    if (!cart) {
+      console.log(`🆕 Création nouveau panier pour user: ${ctx.from.id}`);
+      cart = await safeDbOperation(() => Cart.create({
+        telegramId: ctx.from.id,
+        items: [],
+        totalAmount: 0,
+        lastActivity: new Date()
+      }));
+      
+      if (!cart) {
+        console.log('❌ Échec création panier');
+        return ctx.answerCbQuery('❌ Erreur création panier');
+      }
+      console.log('✅ Nouveau panier créé');
+    }
+
+    // Conversion forcée en array
+    const currentItems = Array.isArray(cart.items) ? cart.items : JSON.parse(cart.items || '[]');
+    console.log(`📋 Items avant:`, currentItems);
+    
+    // Créer le nom complet avec variété
+    const fullProductName = `${productVariants.baseName} (${selectedVariant.name})`;
+    const totalPrice = selectedVariant.price * quantity;
+    
+    // Créer l'item avec informations de variété
+    const newItem = {
+      productId: parseInt(productId),
+      variantId: selectedVariant.id,
+      variantName: selectedVariant.name,
+      baseName: productVariants.baseName,
+      name: fullProductName,
+      quantity: quantity,
+      unitPrice: selectedVariant.price,
+      totalPrice: totalPrice,
+      addedAt: new Date().toISOString()
+    };
+    
+    console.log(`📦 Item créé:`, newItem);
+    
+    // Vérifier si cette variété existe déjà
+    const existingItemIndex = currentItems.findIndex(item => 
+      item.variantId === variantId
+    );
+    
+    if (existingItemIndex > -1) {
+      // Mettre à jour la quantité existante
+      currentItems[existingItemIndex].quantity += quantity;
+      currentItems[existingItemIndex].totalPrice = currentItems[existingItemIndex].quantity * selectedVariant.price;
+      console.log(`📝 Item existant mis à jour:`, currentItems[existingItemIndex]);
+    } else {
+      // Ajouter un nouvel item
+      currentItems.push(newItem);
+      console.log(`🆕 Nouvel item ajouté:`, newItem);
+    }
+
+    // Mettre à jour le panier
+    console.log(`💾 Mise à jour panier avec variété...`);
+    const updated = await safeDbOperation(() => Cart.update({
+      items: currentItems,
+      totalAmount: currentItems.reduce((sum, item) => sum + item.totalPrice, 0),
+      lastActivity: new Date()
+    }, {
+      where: { id: cart.id }
+    }));
+    console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
+    
+    await ctx.answerCbQuery(`✅ ${quantity}g de ${selectedVariant.name} ajouté !`);
+    await ctx.reply(`🛒 ${quantity}g de "${fullProductName}" ajouté au panier ! cliquer sur Mon panier pour finaliser votre commande.`);
+    
+    console.log(`🎉 handleAddVariantToCart TERMINÉ avec succès`);
+    
+  } catch (error) {
+    console.error('💥 ERREUR CRITIQUE handleAddVariantToCart:', error);
+    console.error('Stack:', error.stack);
+    await ctx.answerCbQuery('❌ Erreur ajout au panier');
+  }
+}
+
 async function handleAddToCart(ctx, productId, quantity) {
   try {
-    console.log(`🛒 DEBUT handleAddToCart - User: ${ctx.from.id}, Produit: ${productId}, Qty: ${quantity}`);
+    console.log(`🛒 ANCIEN - User: ${ctx.from.id}, Produit: ${productId}, Qty: ${quantity}`);
     
     const product = await safeDbOperation(() => Product.findByPk(productId));
     console.log(`📦 Produit trouvé:`, product ? product.name : 'NON');
@@ -78,7 +199,7 @@ async function handleAddToCart(ctx, productId, quantity) {
     console.log(`💾 Mise à jour panier...`);
     console.log(`📦 Items à sauvegarder:`, currentItems);
     
-    // ✅ SOLUTION FINALE : Utiliser Cart.update() avec where pour contourner le bug Sequelize
+    // ✅ SOLUTION FINALE : Utiliser Cart.update() avec where
     const updated = await safeDbOperation(() => Cart.update({
       items: currentItems,
       totalAmount: currentItems.reduce((sum, item) => sum + item.totalPrice, 0),
@@ -89,19 +210,7 @@ async function handleAddToCart(ctx, productId, quantity) {
     console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
-    
-    // Message avec bouton pour voir le panier
-    await ctx.reply(
-      `🛒 ${quantity}g de "${product.name}" ajouté au panier!`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🛒 Voir mon panier', callback_data: 'view_cart' }],
-            [{ text: '📦 Continuer les achats', callback_data: 'back_to_products' }]
-          ]
-        }
-      }
-    );
+    await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier! cliquer sur Mon panier pour finaliser votre commande.`);
     
     console.log(`🎉 handleAddToCart TERMINÉ avec succès`);
     
@@ -168,7 +277,6 @@ async function handleCustomQuantityResponse(ctx) {
     if (isNaN(quantity) || quantity <= 0) {
       console.log('❌ Quantité invalide');
       await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
-      delete ctx.session.waitingForCustomQuantity;
       return;
     }
 
@@ -189,7 +297,6 @@ async function handleCustomQuantityResponse(ctx) {
     
   } catch (error) {
     console.error('Erreur réponse quantité:', error);
-    delete ctx.session.waitingForCustomQuantity;
     await ctx.reply('❌ Erreur lors du traitement de la quantité');
   }
 }
@@ -197,12 +304,6 @@ async function handleCustomQuantityResponse(ctx) {
 async function showCart(ctx) {
   try {
     console.log(`👀 DEBUT showCart - User: ${ctx.from.id}`);
-    
-    // Vérifier que l'utilisateur est bien défini
-    if (!ctx.from || !ctx.from.id) {
-      console.log('❌ Utilisateur non défini');
-      return ctx.reply('❌ Impossible de charger le panier. Veuillez réessayer.');
-    }
     
     const cart = await safeDbOperation(() => Cart.findOne({ where: { telegramId: ctx.from.id } }));
     console.log(`🛍️ Panier trouvé:`, cart ? 'OUI' : 'NON');
@@ -224,7 +325,6 @@ async function showCart(ctx) {
 
     console.log(`📋 Items dans panier (RAW):`, cart.items);
     console.log(`📋 Type de items:`, typeof cart.items);
-    console.log(`📋 Longueur de items:`, Array.isArray(cart.items) ? cart.items.length : 'NON-ARRAY');
     
     // FORCER la conversion en array si nécessaire
     const items = Array.isArray(cart.items) ? cart.items : JSON.parse(cart.items || '[]');
@@ -252,21 +352,34 @@ async function showCart(ctx) {
     let totalAmount = 0;
 
     for (const item of items) {
-      console.log(`🔍 Récupération produit: ${item.productId}`);
-      const product = await safeDbOperation(() => Product.findByPk(item.productId));
-      if (product) {
-        message += `🌿 ${product.name}\n`;
+      console.log(`🔍 Item du panier:`, item);
+      
+      // AFFICHAGE AVEC VARIÉTÉ SI DISPONIBLE
+      if (item.variantName) {
+        // Produit avec variété
+        message += `🌿 ${item.baseName || item.name}\n`;
+        message += `   🍃 Variété: ${item.variantName}\n`;
         message += `   📦 Quantité: ${item.quantity}g\n`;
         message += `   💰 Prix: ${item.totalPrice}€\n\n`;
-        totalAmount += item.totalPrice;
-        console.log(`✅ Produit affiché: ${product.name}`);
+        console.log(`✅ Variété affichée: ${item.variantName}`);
       } else {
-        console.log(`❌ Produit non trouvé: ${item.productId}`);
-        message += `🌿 ${item.name || `Produit #${item.productId}`}\n`;
-        message += `   📦 Quantité: ${item.quantity}g\n`;
-        message += `   💰 Prix: ${item.totalPrice}€\n\n`;
-        totalAmount += item.totalPrice;
+        // Produit sans variété
+        console.log(`📦 Récupération produit sans variété: ${item.productId}`);
+        const product = await safeDbOperation(() => Product.findByPk(item.productId));
+        if (product) {
+          message += `🌿 ${product.name}\n`;
+          message += `   📦 Quantité: ${item.quantity}g\n`;
+          message += `   💰 Prix: ${item.totalPrice}€\n\n`;
+          console.log(`✅ Produit affiché: ${product.name}`);
+        } else {
+          console.log(`❌ Produit non trouvé: ${item.productId}`);
+          message += `🌿 ${item.name || `Produit #${item.productId}`}\n`;
+          message += `   📦 Quantité: ${item.quantity}g\n`;
+          message += `   💰 Prix: ${item.totalPrice}€\n\n`;
+        }
       }
+      
+      totalAmount += item.totalPrice;
     }
 
     message += `💵 *Total: ${totalAmount}€*`;
@@ -317,7 +430,6 @@ async function clearCart(ctx) {
     if (cart) {
       console.log(`📋 Items avant vidage:`, cart.items.length);
       
-      // ✅ Utiliser aussi Cart.update() pour le vidage
       await safeDbOperation(() => Cart.update({
         items: [],
         totalAmount: 0,
@@ -342,6 +454,7 @@ async function clearCart(ctx) {
 
 module.exports = { 
   handleAddToCart, 
+  handleAddVariantToCart, // AJOUTÉ
   handleCustomQuantity, 
   handleCustomQuantityResponse,
   showCart, 
