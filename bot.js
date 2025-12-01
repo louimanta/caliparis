@@ -3,7 +3,7 @@ const { Telegraf, session } = require('telegraf');
 
 console.log('🚀 Démarrage du bot CaliParis...');
 
-// Fonction pour charger les modules avec gestion d'erreur
+// === CORRECTION 1 : Fonction loadModule corrigée ===
 function loadModule(modulePath, fallback = null) {
   try {
     console.log(`🔍 Chargement: ${modulePath}`);
@@ -14,20 +14,21 @@ function loadModule(modulePath, fallback = null) {
     console.log(`❌ Impossible de charger ${modulePath}:`, error.message);
     
     // Essayer un chemin alternatif
+    const altPath = modulePath.replace('./', '../'); // Déclaré ICI pour être accessible partout
+    
     try {
-      const altPath = modulePath.replace('./', '../');
       console.log(`🔍 Essai chemin alternatif: ${altPath}`);
       const module = require(altPath);
       console.log(`✅ ${altPath} chargé avec succès`);
       return module;
     } catch (error2) {
+      // Maintenant altPath est accessible
       console.log(`❌ Chemin alternatif échoué: ${altPath}`);
       
       if (fallback) {
         console.log(`⚠️  Utilisation du fallback pour ${modulePath}`);
         return fallback;
       }
-      // Retourner un objet vide avec des fonctions vides
       return {};
     }
   }
@@ -143,14 +144,44 @@ try {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Middlewares globaux
-bot.use(session());
+// === CORRECTION 2 : Session persistante ===
+const sessions = {}; // Stockage en mémoire
 
-// Middleware pour initialiser la session
+bot.use(session({
+  ttl: 7 * 24 * 60 * 60, // 7 jours
+  store: {
+    get: (key) => {
+      console.log(`📥 Chargement session: ${key}`);
+      return Promise.resolve(sessions[key] || {});
+    },
+    set: (key, session) => {
+      console.log(`💾 Sauvegarde session: ${key}`);
+      sessions[key] = session;
+      return Promise.resolve();
+    },
+    delete: (key) => {
+      console.log(`🗑️ Suppression session: ${key}`);
+      delete sessions[key];
+      return Promise.resolve();
+    }
+  }
+}));
+
+// Middleware pour initialiser la session et le panier
 bot.use((ctx, next) => {
   if (!ctx.session) {
     ctx.session = {};
   }
+  
+  // Initialiser le panier dans la session si nécessaire
+  if (!ctx.session.cartSession) {
+    ctx.session.cartSession = {
+      waitingForCustomQuantity: false,
+      productIdForCustomQuantity: null,
+      timestamp: null
+    };
+  }
+  
   return next();
 });
 
@@ -207,7 +238,7 @@ bot.hears('💎 Commandes en gros', (ctx) => {
 
 bot.on('text', async (ctx, next) => {
   // Gestion des quantités personnalisées
-  if (ctx.session && ctx.session.waitingForCustomQuantity) {
+  if (ctx.session && ctx.session.cartSession && ctx.session.cartSession.waitingForCustomQuantity) {
     await cartHandler.handleCustomQuantityResponse(ctx);
     return;
   }
@@ -301,7 +332,10 @@ bot.action(/custom_(\d+)/, async (ctx) => {
 
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
   await safeAnswerCbQuery(ctx, '❌ Quantité annulée');
-  if (ctx.session) delete ctx.session.waitingForCustomQuantity;
+  if (ctx.session && ctx.session.cartSession) {
+    ctx.session.cartSession.waitingForCustomQuantity = false;
+    ctx.session.cartSession.productIdForCustomQuantity = null;
+  }
 });
 
 bot.action(/video_(\d+)/, async (ctx) => {
