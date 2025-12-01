@@ -125,7 +125,22 @@ async function handleAddVariantToCart(ctx, variantId, quantity) {
     console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g de ${selectedVariant.name} ajouté !`);
-    await ctx.reply(`🛒 ${quantity}g de "${fullProductName}" ajouté au panier ! cliquer sur Mon panier pour finaliser votre commande.`);
+    
+    // === MODIFICATION : AJOUT DES BOUTONS APRÈS AJOUT ===
+    await ctx.reply(
+      `✅ ${quantity}g de "${fullProductName}" ajouté au panier !\n\n🎯 *Que souhaitez-vous faire maintenant ?*`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🛒 Voir mon panier', callback_data: 'view_cart' },
+              { text: '📦 Continuer mes achats', callback_data: 'back_to_products' }
+            ]
+          ]
+        }
+      }
+    );
     
     console.log(`🎉 handleAddVariantToCart TERMINÉ avec succès`);
     
@@ -210,7 +225,22 @@ async function handleAddToCart(ctx, productId, quantity) {
     console.log(`✅ Panier mis à jour via SQL:`, updated ? 'OUI' : 'NON');
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
-    await ctx.reply(`🛒 ${quantity}g de "${product.name}" ajouté au panier! cliquer sur Mon panier pour finaliser votre commande.`);
+    
+    // === MODIFICATION : AJOUT DES BOUTONS APRÈS AJOUT ===
+    await ctx.reply(
+      `✅ ${quantity}g de "${product.name}" ajouté au panier !\n\n🎯 *Que souhaitez-vous faire maintenant ?*`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🛒 Voir mon panier', callback_data: 'view_cart' },
+              { text: '📦 Continuer mes achats', callback_data: 'back_to_products' }
+            ]
+          ]
+        }
+      }
+    );
     
     console.log(`🎉 handleAddToCart TERMINÉ avec succès`);
     
