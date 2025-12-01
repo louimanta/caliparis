@@ -347,7 +347,7 @@ async function showProductDetails(ctx, productId) {
     detailsMessage += `
 📊 *Informations techniques:*
 • Type: ${product.category || 'Non spécifié'}
-• Qualité: ${product.quality || 'Standard'}
+• Qualité: ${product.quality || 'Premium'}
     `;
 
     if (product.category === 'la mousse') {
@@ -390,4 +390,5 @@ module.exports = {
   handleVariantSelection,
   handleCustomVariantQuantity  // AJOUTÉ
 };
+
 
