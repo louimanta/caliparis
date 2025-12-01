@@ -5,25 +5,25 @@
 module.exports = {
   // EXEMPLE : Pour un produit avec ID 1 dans votre base
   "1": {
-    baseName: "Birthday",
+    baseName: "Caliplates",
     variants: [
       {
-        id: "1_ogkush",  // ID unique pour le callback
-        name: "OG Kush",
+        id: "1_gelato41",  // ID unique pour le callback
+        name: "Gelato 41",
         price: 20,       // Prix spécifique (peut être différent du produit de base)
-        description: "Variété OG Kush puissante et terreuse"
+        description: "Gelato 41 puissante et saveureux"
       },
       {
-        id: "1_amnesia",
-        name: "Amnesia",
-        price: 22,
-        description: "Variété Amnesia cérébrale et énergisante"
+        id: "1_lemonsbars",
+        name: "Lemon Bars",
+        price: 20,
+        description: "Lemon Bars cérébrale et énergisante"
       },
       {
-        id: "1_bluedream",
-        name: "Blue Dream",
-        price: 25,
-        description: "Variété Blue Dream douce et équilibrée"
+        id: "1_kushmintz",
+        name: "Kush Mintz",
+        price: 20,
+        description: "Kush Mintz douce et équilibrée"
       }
     ]
   },
