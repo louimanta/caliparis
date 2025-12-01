@@ -213,6 +213,8 @@ async function showVariantsMenu(ctx, productId) {
 // === NOUVELLE FONCTION : SÉLECTION DE VARIÉTÉ ===
 async function handleVariantSelection(ctx, variantId, quantity) {
   try {
+    console.log(`🌿 Sélection variante: ${variantId}, quantité: ${quantity}`);
+    
     // Extraire l'ID du produit du variantId (format: "1_ogkush")
     const [productId, variantName] = variantId.split('_');
     const product = await safeDbOperation(() => Product.findByPk(productId));
@@ -238,44 +240,9 @@ async function handleVariantSelection(ctx, variantId, quantity) {
       return ctx.answerCbQuery(`❌ ${selectedVariant.minQuantity}g minimum requis`);
     }
     
-    // Récupérer ou créer le panier
-    let cart = await Cart.findOne({ where: { telegramId: ctx.from.id } });
-    if (!cart) {
-      cart = await Cart.create({
-        telegramId: ctx.from.id,
-        items: [],
-        totalAmount: 0,
-        lastActivity: new Date()
-      });
-    }
-    
-    // Créer le nom complet du produit
-    const fullProductName = `${productVariants.baseName} (${selectedVariant.name})`;
-    const totalPrice = selectedVariant.price * quantity;
-    
-    // Créer l'item du panier
-    const newItem = {
-      productId: product.id,
-      variantId: selectedVariant.id,
-      name: fullProductName,
-      baseName: productVariants.baseName,
-      variantName: selectedVariant.name,
-      quantity: quantity,
-      unitPrice: selectedVariant.price,
-      totalPrice: totalPrice,
-      addedAt: new Date().toISOString()
-    };
-    
-    // Ajouter au panier (logique existante)
-    cart.items.push(newItem);
-    cart.totalAmount += totalPrice;
-    cart.lastActivity = new Date();
-    
-    await cart.save();
-    
-    // Confirmer l'ajout
-    await ctx.reply(`✅ ${quantity}g de ${fullProductName} ajouté au panier !`);
-    await ctx.answerCbQuery('✅ Ajouté au panier');
+    // CORRECTION : APPELER cartHandler.handleAddToCart AU LIEU DE LA LOGIQUE INTERNE
+    const cartHandler = require('./cartHandler');
+    await cartHandler.handleAddToCart(ctx, parseInt(productId), quantity);
     
     // Essayer de supprimer le message de sélection
     try {
