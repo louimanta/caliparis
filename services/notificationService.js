@@ -27,7 +27,16 @@ ${productsText}
 ${order.deliveryAddress}
       `.trim();
 
-      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
+      // VÉRIFICATION CRITIQUE : ADMIN_CHAT_ID
+      const adminChatId = process.env.ADMIN_CHAT_ID;
+      
+      if (!adminChatId || adminChatId === '7965350707') {
+        console.error('❌ ADMIN_CHAT_ID non configuré ou valeur incorrecte');
+        console.error('❌ Vérifiez la variable d\'environnement sur Railway');
+        return;
+      }
+
+      await ctx.telegram.sendMessage(adminChatId, message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [
@@ -66,7 +75,15 @@ ${productsText}
 ⚡ *CONTACTER RAPIDEMENT POUR OFFRE PERSONNALISÉE!*
       `.trim();
 
-      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
+      // VÉRIFICATION CRITIQUE : ADMIN_CHAT_ID
+      const adminChatId = process.env.ADMIN_CHAT_ID;
+      
+      if (!adminChatId || adminChatId === '7965350707') {
+        console.error('❌ ADMIN_CHAT_ID non configuré ou valeur incorrecte');
+        return;
+      }
+
+      await ctx.telegram.sendMessage(adminChatId, message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.url('📞 Contacter maintenant', `tg://user?id=${userId}`)]
@@ -91,7 +108,15 @@ ${productsText}
 Il est temps de réapprovisionner!
       `.trim();
 
-      await ctx.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message, {
+      // VÉRIFICATION CRITIQUE : ADMIN_CHAT_ID
+      const adminChatId = process.env.ADMIN_CHAT_ID;
+      
+      if (!adminChatId || adminChatId === '7965350707') {
+        console.error('❌ ADMIN_CHAT_ID non configuré ou valeur incorrecte');
+        return;
+      }
+
+      await ctx.telegram.sendMessage(adminChatId, message, {
         parse_mode: 'Markdown'
       });
 
