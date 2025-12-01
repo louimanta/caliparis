@@ -146,7 +146,7 @@ async function handlePaymentMethod(ctx, method) {
     await ctx.reply(paymentMessage, { parse_mode: 'Markdown' });
 
     // Notification admin via le service
-    await notificationService.notifyAdmin(ctx, order, customer, { items: cartItems, totalAmount });
+  await notificationService.notifyAdmin(ctx, order, customer, cartItems, totalAmount);
 
     await ctx.answerCbQuery('✅ Commande créée!');
     console.log(`🎉 handlePaymentMethod TERMINÉ - Commande #${order.id}`);
@@ -232,3 +232,4 @@ module.exports = {
   handleDiscountRequest, 
   confirmDiscountRequest 
 };
+
