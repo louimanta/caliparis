@@ -33,7 +33,7 @@ function loadModule(modulePath, fallback = null) {
   }
 }
 
-// === AJOUT: Fonction pour gérer les callbacks expirés ===
+// === FONCTION POUR GÉRER LES CALLBACKS EXPIRÉS ===
 function safeAnswerCbQuery(ctx, text = '') {
   try {
     return ctx.answerCbQuery(text).catch(err => {
@@ -53,6 +53,8 @@ function safeAnswerCbQuery(ctx, text = '') {
 const fallbackHandlers = {
   handleStart: (ctx) => ctx.reply('🌿 Bienvenue chez CaliParis! 🌿\n\nUtilisez les boutons pour naviguer.'),
   showProducts: (ctx) => ctx.reply('📦 Catalogue - Choisissez vos produits'),
+  showVariantsMenu: (ctx) => ctx.answerCbQuery('🌿 Menu variétés'),
+  handleVariantSelection: (ctx) => ctx.answerCbQuery('✅ Variété sélectionnée'),
   showCart: (ctx) => ctx.reply('🛒 Votre panier est vide'),
   handleCheckout: (ctx) => ctx.reply('💰 Passer commande'),
   handleAdminCommands: (ctx) => ctx.reply('👨‍💼 Panel administrateur')
@@ -61,13 +63,18 @@ const fallbackHandlers = {
 // Chargement sécurisé des handlers
 console.log('📥 Chargement des handlers...');
 const startHandler = loadModule('./handlers/startHandler', { handleStart: fallbackHandlers.handleStart });
+
+// Chargement avec les nouvelles fonctions de variétés
 const productHandler = loadModule('./handlers/productHandler', { 
   showProducts: fallbackHandlers.showProducts,
+  showVariantsMenu: fallbackHandlers.showVariantsMenu,
+  handleVariantSelection: fallbackHandlers.handleVariantSelection,
   showProductVideo: (ctx) => ctx.answerCbQuery('🎬 Vidéo non disponible'),
   showProductDetails: (ctx) => ctx.answerCbQuery('📊 Détails non disponibles'),
   hasMinimumPurchase: (product) => false,
   getMinimumQuantity: (product) => 1
 });
+
 const cartHandler = loadModule('./handlers/cartHandler', {
   handleAddToCart: (ctx) => ctx.answerCbQuery('✅ Produit ajouté'),
   handleCustomQuantity: (ctx) => ctx.reply('🔢 Entrez la quantité:'),
@@ -75,12 +82,14 @@ const cartHandler = loadModule('./handlers/cartHandler', {
   showCart: fallbackHandlers.showCart,
   clearCart: (ctx) => ctx.reply('✅ Panier vidé')
 });
+
 const orderHandler = loadModule('./handlers/orderHandler', {
   handleCheckout: fallbackHandlers.handleCheckout,
   handlePaymentMethod: (ctx) => ctx.reply('💳 Méthode de paiement'),
   handleDiscountRequest: (ctx) => ctx.reply('💎 Demande de remise'),
   confirmDiscountRequest: (ctx) => ctx.reply('✅ Demande envoyée')
 });
+
 const adminHandler = loadModule('./handlers/adminHandler', {
   handleAdminCommands: fallbackHandlers.handleAdminCommands,
   showAdminStats: (ctx) => ctx.reply('📊 Statistiques'),
@@ -90,13 +99,11 @@ const adminHandler = loadModule('./handlers/adminHandler', {
   showSalesToday: (ctx) => ctx.reply('📈 Ventes aujourd\'hui'),
   showActiveProducts: (ctx) => ctx.reply('✅ Produits actifs'),
   showOrderStatuses: (ctx) => ctx.reply('🔍 Statuts commandes'),
-  // === AJOUT DES FALLBACKS POUR LES NOUVELLES FONCTIONS ===
   disableProduct: (ctx) => ctx.reply('🚫 Désactiver produit'),
   enableProduct: (ctx) => ctx.reply('✅ Activer produit'),
   deleteProduct: (ctx) => ctx.reply('🗑️ Supprimer produit'),
   handleProductIdInput: (ctx) => ctx.reply('🔢 Traitement ID produit'),
   cancelProductAction: (ctx) => ctx.reply('✅ Action annulée'),
-  // === AJOUT DES FALLBACKS POUR L'AJOUT DE PRODUIT ===
   addProduct: (ctx) => ctx.reply('🆕 Ajouter un produit'),
   handleProductCreation: (ctx) => ctx.reply('📝 Création produit'),
   handleProductPhoto: (ctx) => ctx.reply('🖼️ Gestion photo'),
@@ -139,7 +146,7 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 // Middlewares globaux
 bot.use(session());
 
-// ✅ CORRECTION AJOUTÉE : Middleware pour initialiser la session
+// Middleware pour initialiser la session
 bot.use((ctx, next) => {
   if (!ctx.session) {
     ctx.session = {};
@@ -154,7 +161,10 @@ bot.use(cartMiddleware.updateCartTimestamp);
 // Commandes de base
 bot.start(startHandler.handleStart);
 
-// Handlers de messages
+// ==============================================
+// HANDLERS DE MESSAGES
+// ==============================================
+
 bot.hears('📦 Voir le catalogue', productHandler.showProducts);
 bot.hears('🛒 Mon panier', cartHandler.showCart);
 bot.hears('🎬 Vidéo présentation', (ctx) => {
@@ -191,7 +201,10 @@ bot.hears('💎 Commandes en gros', (ctx) => {
   );
 });
 
-// === AJOUT: Handler pour les inputs de produits (suppression, activation, etc.) ===
+// ==============================================
+// HANDLERS POUR LES INPUTS TEXTE
+// ==============================================
+
 bot.on('text', async (ctx, next) => {
   // Gestion des quantités personnalisées
   if (ctx.session && ctx.session.waitingForCustomQuantity) {
@@ -199,13 +212,13 @@ bot.on('text', async (ctx, next) => {
     return;
   }
   
-  // === AJOUT: Gestion des IDs de produits pour admin ===
+  // Gestion des IDs de produits pour admin
   if (ctx.session && ctx.session.waitingForProductId) {
     await adminHandler.handleProductIdInput(ctx);
     return;
   }
   
-  // === AJOUT: Gestion de la création de produit ===
+  // Gestion de la création de produit
   if (ctx.session && ctx.session.creatingProduct) {
     await adminHandler.handleProductCreation(ctx);
     return;
@@ -214,7 +227,10 @@ bot.on('text', async (ctx, next) => {
   return next();
 });
 
-// === AJOUT: Handlers pour les médias ===
+// ==============================================
+// HANDLERS POUR LES MÉDIAS
+// ==============================================
+
 bot.on('photo', async (ctx) => {
   if (ctx.session && ctx.session.creatingProduct && ctx.session.creationStep === 'photo') {
     await adminHandler.handleProductPhoto(ctx);
@@ -238,19 +254,44 @@ bot.hears('/skip', async (ctx) => {
   }
 });
 
-// Commandes admin
-bot.hears('/admin', authMiddleware.isAdmin, adminHandler.handleAdminCommands);
+// ==============================================
+// COMMANDES ADMIN
+// ==============================================
 
-// === AJOUT: Commande d'annulation pour admin ===
+bot.hears('/admin', authMiddleware.isAdmin, adminHandler.handleAdminCommands);
 bot.hears('/cancel', authMiddleware.isAdmin, adminHandler.cancelProductAction);
 
-// Callbacks pour produits
+// ==============================================
+// CALLBACKS POUR LES PRODUITS ET VARIÉTÉS
+// ==============================================
+
+// === PRODUITS SANS VARIÉTÉS (ancien système) ===
 bot.action(/add_(\d+)_(\d+)/, async (ctx) => {
   const quantity = parseInt(ctx.match[1]);
   const productId = parseInt(ctx.match[2]);
   await safeAnswerCbQuery(ctx, '✅ Produit ajouté');
   await cartHandler.handleAddToCart(ctx, productId, quantity);
 });
+
+// === PRODUITS AVEC VARIÉTÉS (nouveau système) ===
+
+// 1. Quand l'utilisateur clique sur "🌿 Choisir la variété"
+bot.action(/^choose_variant_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await safeAnswerCbQuery(ctx, '🌿 Chargement des variétés...');
+  await productHandler.showVariantsMenu(ctx, productId);
+});
+
+// 2. Quand l'utilisateur sélectionne une variété (1g par défaut)
+bot.action(/^select_variant_(.+)_1$/, async (ctx) => {
+  const variantId = ctx.match[1];
+  await safeAnswerCbQuery(ctx, '✅ Ajout au panier...');
+  await productHandler.handleVariantSelection(ctx, variantId, 1);
+});
+
+// ==============================================
+// CALLBACKS EXISTANTS POUR PRODUITS
+// ==============================================
 
 bot.action(/custom_(\d+)/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
@@ -275,7 +316,10 @@ bot.action(/details_(\d+)/, async (ctx) => {
   await productHandler.showProductDetails(ctx, productId);
 });
 
-// Callbacks pour panier
+// ==============================================
+// CALLBACKS POUR LE PANIER
+// ==============================================
+
 bot.action('view_cart', async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Chargement panier...');
   await cartHandler.showCart(ctx);
@@ -296,7 +340,10 @@ bot.action('clear_cart', async (ctx) => {
   await cartHandler.clearCart(ctx);
 });
 
-// Callbacks pour commande
+// ==============================================
+// CALLBACKS POUR LES COMMANDES
+// ==============================================
+
 bot.action('checkout', async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Préparation commande...');
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.handleCheckout(ctx));
@@ -322,7 +369,10 @@ bot.action('confirm_discount_request', async (ctx) => {
   await cartMiddleware.checkCartNotEmpty(ctx, () => orderHandler.confirmDiscountRequest(ctx));
 });
 
-// Callbacks admin
+// ==============================================
+// CALLBACKS ADMIN
+// ==============================================
+
 bot.action('admin_stats', authMiddleware.isAdmin, async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Chargement stats...');
   await adminHandler.showAdminStats(ctx);
@@ -353,7 +403,7 @@ bot.action('admin_show_statuses', authMiddleware.isAdmin, async (ctx) => {
   await adminHandler.showOrderStatuses(ctx);
 });
 
-// === AJOUT: Callbacks pour la gestion des produits admin ===
+// Gestion des produits admin
 bot.action('admin_disable_product', authMiddleware.isAdmin, async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Désactivation produit...');
   await adminHandler.disableProduct(ctx);
@@ -369,20 +419,20 @@ bot.action('admin_delete_product', authMiddleware.isAdmin, async (ctx) => {
   await adminHandler.deleteProduct(ctx);
 });
 
-// === AJOUT: Callbacks pour l'ajout de produit ===
+// Ajout de produit
 bot.action('admin_add_product', authMiddleware.isAdmin, async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Création produit...');
   await adminHandler.addProduct(ctx);
 });
 
-// Gestion des catégories pour nouveau produit
+// Gestion des catégories
 bot.action(/category_(.+)_new/, authMiddleware.isAdmin, async (ctx) => {
   const category = ctx.match[1];
   await safeAnswerCbQuery(ctx, '🎯 Catégorie sélectionnée');
   await adminHandler.handleProductCategory(ctx, category);
 });
 
-// Gestion de la qualité pour nouveau produit
+// Gestion de la qualité
 bot.action(/quality_(.+)_new/, authMiddleware.isAdmin, async (ctx) => {
   const quality = ctx.match[1];
   await safeAnswerCbQuery(ctx, '⭐ Qualité sélectionnée');
@@ -394,6 +444,7 @@ bot.action('back_to_admin', authMiddleware.isAdmin, async (ctx) => {
   await adminHandler.handleAdminCommands(ctx);
 });
 
+// Actions sur les commandes
 bot.action(/admin_process_(\d+)/, authMiddleware.isAdmin, async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Traitement commande...');
   await adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'process');
@@ -409,31 +460,34 @@ bot.action(/admin_cancel_(\d+)/, authMiddleware.isAdmin, async (ctx) => {
   await adminHandler.handleOrderAction(ctx, parseInt(ctx.match[1]), 'cancel');
 });
 
-// Gestion des erreurs
+// ==============================================
+// GESTION DES ERREURS
+// ==============================================
+
 bot.catch((err, ctx) => {
   console.error('❌ Erreur bot:', err);
   ctx.reply('❌ Une erreur est survenue. Veuillez réessayer.');
 });
 
-// Démarrage résilient du bot
+// ==============================================
+// DÉMARRAGE DU BOT
+// ==============================================
+
 async function startBot() {
   try {
     console.log('🤖 Lancement du bot...');
     
     if (sequelize) {
-      // Essayer avec la base de données
       await sequelize.sync();
       console.log('✅ Base de données synchronisée');
     }
     
-    // Démarrer le bot
     await bot.launch();
     console.log('🎉 Bot CaliParis démarré avec succès!');
     
   } catch (error) {
     console.error('❌ Erreur démarrage:', error);
     
-    // Dernière tentative sans DB
     try {
       await bot.launch();
       console.log('🎉 Bot démarré en mode de secours!');
@@ -443,10 +497,12 @@ async function startBot() {
   }
 }
 
-// Démarrer le bot après un court délai
 setTimeout(startBot, 1000);
 
-// Gestion propre de l'arrêt
+// ==============================================
+// GESTION PROPRE DE L'ARRÊT
+// ==============================================
+
 process.once('SIGINT', () => {
   console.log('🛑 Arrêt du bot...');
   bot.stop('SIGINT');
@@ -461,4 +517,3 @@ process.once('SIGTERM', () => {
 bot.secretPathComponent = () => 'c5bbd267c75e26ee56bbb7d0744acfcc8b20f7bc305ddd6556e36b22f63be7c9';
 
 module.exports = bot;
-
