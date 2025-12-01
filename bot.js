@@ -73,11 +73,13 @@ const productHandler = loadModule('./handlers/productHandler', {
   showProductVideo: (ctx) => ctx.answerCbQuery('🎬 Vidéo non disponible'),
   showProductDetails: (ctx) => ctx.answerCbQuery('📊 Détails non disponibles'),
   hasMinimumPurchase: (product) => false,
-  getMinimumQuantity: (product) => 1
+  getMinimumQuantity: (product) => 1,
+  handleCustomVariantQuantity: (ctx) => ctx.answerCbQuery('🔢 Quantité variété')
 });
 
 const cartHandler = loadModule('./handlers/cartHandler', {
   handleAddToCart: (ctx) => ctx.answerCbQuery('✅ Produit ajouté'),
+  handleAddVariantToCart: (ctx) => ctx.answerCbQuery('✅ Variété ajoutée'), // AJOUTÉ
   handleCustomQuantity: (ctx) => ctx.reply('🔢 Entrez la quantité:'),
   handleCustomQuantityResponse: (ctx) => ctx.reply('✅ Quantité ajoutée'),
   showCart: fallbackHandlers.showCart,
@@ -167,15 +169,22 @@ bot.use(session({
   }
 }));
 
-// === CORRECTION 3 : Middleware pour initialiser la session ===
+// Middleware pour initialiser la session et le panier
 bot.use((ctx, next) => {
   if (!ctx.session) {
     ctx.session = {};
   }
   
-  // Initialiser uniquement les champs nécessaires pour le panier
-  if (ctx.session.waitingForCustomQuantity === undefined) {
-    ctx.session.waitingForCustomQuantity = null;
+  // Initialiser le panier dans la session si nécessaire
+  if (!ctx.session.cartSession) {
+    ctx.session.cartSession = {
+      waitingForCustomQuantity: false,
+      productIdForCustomQuantity: null,
+      waitingForVariantSelection: false,
+      variantProductId: null,
+      variantQuantity: null,
+      timestamp: null
+    };
   }
   
   return next();
@@ -229,34 +238,47 @@ bot.hears('💎 Commandes en gros', (ctx) => {
 });
 
 // ==============================================
-// CORRECTION 4 : HANDLERS POUR LES INPUTS TEXTE
+// HANDLERS POUR LES INPUTS TEXTE
 // ==============================================
 
 bot.on('text', async (ctx, next) => {
-  console.log(`📝 Message texte reçu: "${ctx.message.text}"`);
-  
-  // CORRECTION : Vérifier d'abord si c'est pour une quantité personnalisée
-  if (ctx.session.waitingForCustomQuantity) {
-    console.log('📝 Traitement quantité personnalisée...');
+  // Gestion des quantités personnalisées
+  if (ctx.session && ctx.session.cartSession && ctx.session.cartSession.waitingForCustomQuantity) {
     await cartHandler.handleCustomQuantityResponse(ctx);
-    return; // IMPORTANT: return pour éviter de continuer
+    return;
+  }
+  
+  // Gestion de la sélection de variété avec quantité personnalisée
+  if (ctx.session && ctx.session.cartSession && ctx.session.cartSession.waitingForVariantSelection) {
+    const quantity = parseFloat(ctx.message.text);
+    const productId = ctx.session.cartSession.variantProductId;
+    
+    if (!isNaN(quantity) && quantity > 0) {
+      // Stocker la quantité et demander la variété
+      ctx.session.cartSession.variantQuantity = quantity;
+      await productHandler.handleCustomVariantQuantity(ctx, productId, quantity);
+    } else {
+      await ctx.reply('❌ Veuillez entrer un nombre valide (ex: 5 pour 5 grammes)');
+    }
+    
+    // Réinitialiser
+    ctx.session.cartSession.waitingForVariantSelection = false;
+    ctx.session.cartSession.variantProductId = null;
+    return;
   }
   
   // Gestion des IDs de produits pour admin
-  if (ctx.session.waitingForProductId) {
-    console.log('📝 Traitement ID produit admin...');
+  if (ctx.session && ctx.session.waitingForProductId) {
     await adminHandler.handleProductIdInput(ctx);
     return;
   }
   
   // Gestion de la création de produit
-  if (ctx.session.creatingProduct) {
-    console.log('📝 Traitement création produit...');
+  if (ctx.session && ctx.session.creatingProduct) {
     await adminHandler.handleProductCreation(ctx);
     return;
   }
   
-  // Si aucun état actif, passer au prochain middleware
   return next();
 });
 
@@ -315,21 +337,27 @@ bot.action(/^choose_variant_(\d+)$/, async (ctx) => {
   await productHandler.showVariantsMenu(ctx, productId);
 });
 
-// 2. Quand l'utilisateur sélectionne une variété (1g par défaut)
-bot.action(/^select_variant_(.+)_1$/, async (ctx) => {
-  const variantId = ctx.match[1];
-  await safeAnswerCbQuery(ctx, '✅ Ajout au panier...');
-  await productHandler.handleVariantSelection(ctx, variantId, 1);
-});
-
-// 3. CORRECTION AJOUTÉE : Handler pour les variantes avec autres quantités
+// 2. Quand l'utilisateur sélectionne une variété avec une quantité spécifique
 bot.action(/^select_variant_(.+)_(\d+)$/, async (ctx) => {
   const variantId = ctx.match[1];
   const quantity = parseInt(ctx.match[2]);
-  console.log(`🛒 Sélection variante: ${variantId}, quantité: ${quantity}`);
-  
   await safeAnswerCbQuery(ctx, '✅ Ajout au panier...');
-  await productHandler.handleVariantSelection(ctx, variantId, quantity);
+  
+  // Utiliser la nouvelle fonction du cartHandler
+  if (cartHandler.handleAddVariantToCart) {
+    await cartHandler.handleAddVariantToCart(ctx, variantId, quantity);
+  } else {
+    // Fallback vers l'ancienne méthode
+    await productHandler.handleVariantSelection(ctx, variantId, quantity);
+  }
+});
+
+// 3. Quand l'utilisateur choisit une quantité custom pour une variété
+bot.action(/^custom_variant_(\d+)_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  const quantity = parseInt(ctx.match[2]);
+  await safeAnswerCbQuery(ctx, '🔢 Chargement variétés...');
+  await productHandler.handleCustomVariantQuantity(ctx, productId, quantity);
 });
 
 // ==============================================
@@ -342,14 +370,15 @@ bot.action(/custom_(\d+)/, async (ctx) => {
   await cartHandler.handleCustomQuantity(ctx, productId);
 });
 
-// === CORRECTION 5 : Handler pour cancel_custom ===
 bot.action(/cancel_custom_(\d+)/, async (ctx) => {
   await safeAnswerCbQuery(ctx, '❌ Quantité annulée');
-  
-  // CORRECTION : Nettoyer la session
-  ctx.session.waitingForCustomQuantity = null;
-  
-  await ctx.reply('✅ Saisie de quantité annulée. Vous pouvez continuer vos achats.');
+  if (ctx.session && ctx.session.cartSession) {
+    ctx.session.cartSession.waitingForCustomQuantity = false;
+    ctx.session.cartSession.productIdForCustomQuantity = null;
+    ctx.session.cartSession.waitingForVariantSelection = false;
+    ctx.session.cartSession.variantProductId = null;
+    ctx.session.cartSession.variantQuantity = null;
+  }
 });
 
 bot.action(/video_(\d+)/, async (ctx) => {
@@ -369,12 +398,6 @@ bot.action(/details_(\d+)/, async (ctx) => {
 // ==============================================
 
 bot.action('view_cart', async (ctx) => {
-  await safeAnswerCbQuery(ctx, '🔄 Chargement panier...');
-  await cartHandler.showCart(ctx);
-});
-
-// === AJOUT : Handler pour mon_panier ===
-bot.action('mon_panier', async (ctx) => {
   await safeAnswerCbQuery(ctx, '🔄 Chargement panier...');
   await cartHandler.showCart(ctx);
 });
@@ -536,22 +559,14 @@ async function startBot() {
       console.log('✅ Base de données synchronisée');
     }
     
-    // CORRECTION : Ajouter dropPendingUpdates pour éviter l'erreur 409
-    await bot.launch({
-      dropPendingUpdates: true,
-      allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member']
-    });
+    await bot.launch();
     console.log('🎉 Bot CaliParis démarré avec succès!');
     
   } catch (error) {
     console.error('❌ Erreur démarrage:', error);
     
     try {
-      // Réessayer avec les mêmes paramètres
-      await bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member']
-      });
+      await bot.launch();
       console.log('🎉 Bot démarré en mode de secours!');
     } catch (finalError) {
       console.error('💥 Échec critique:', finalError);
@@ -559,8 +574,7 @@ async function startBot() {
   }
 }
 
-// CORRECTION : Lancer directement sans setTimeout
-startBot();
+setTimeout(startBot, 1000);
 
 // ==============================================
 // GESTION PROPRE DE L'ARRÊT
