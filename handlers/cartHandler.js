@@ -126,15 +126,15 @@ async function handleAddVariantToCart(ctx, variantId, quantity) {
     
     await ctx.answerCbQuery(`✅ ${quantity}g de ${selectedVariant.name} ajouté !`);
     
-    // === MODIFICATION : AJOUT DES BOUTONS APRÈS AJOUT ===
+    // === MODIFICATION SIMPLIFIÉE ===
     await ctx.reply(
-      `✅ ${quantity}g de "${fullProductName}" ajouté au panier !\n\n🎯 *Que souhaitez-vous faire maintenant ?*`,
+      `✅ ${quantity}g de "${fullProductName}" ajouté au panier !`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🛒 Voir mon panier', callback_data: 'view_cart' },
+              { text: '🛒 Mon panier', callback_data: 'view_cart' },
               { text: '📦 Continuer mes achats', callback_data: 'back_to_products' }
             ]
           ]
@@ -226,15 +226,15 @@ async function handleAddToCart(ctx, productId, quantity) {
     
     await ctx.answerCbQuery(`✅ ${quantity}g ajouté au panier`);
     
-    // === MODIFICATION : AJOUT DES BOUTONS APRÈS AJOUT ===
+    // === MODIFICATION SIMPLIFIÉE ===
     await ctx.reply(
-      `✅ ${quantity}g de "${product.name}" ajouté au panier !\n\n🎯 *Que souhaitez-vous faire maintenant ?*`,
+      `✅ ${quantity}g de "${product.name}" ajouté au panier !`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🛒 Voir mon panier', callback_data: 'view_cart' },
+              { text: '🛒 Mon panier', callback_data: 'view_cart' },
               { text: '📦 Continuer mes achats', callback_data: 'back_to_products' }
             ]
           ]
